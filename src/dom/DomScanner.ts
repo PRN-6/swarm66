@@ -1,5 +1,5 @@
 import { BuilderEffects } from './BuilderEffects';
-import { BuildOrder } from '../types';
+import { BuildOrder, ConstructionTask, TaskType } from '../types';
 
 export interface DomScannerOptions {
   selector: string;
@@ -204,6 +204,76 @@ export class DomScanner {
     if (style.display === 'none' || style.visibility === 'hidden') return true;
 
     return false;
+  }
+
+  /**
+   * Creates a structured dependency-aware task graph for agentic construction:
+   * Classifies tasks into 'rect', 'text', 'path', 'dup', and 'guide'.
+   */
+  public buildTaskGraph(elements: HTMLElement[]): ConstructionTask[] {
+    const tasks: ConstructionTask[] = [];
+    const elementToId = new Map<HTMLElement, string>();
+
+    for (let i = 0; i < elements.length; i++) {
+      const el = elements[i];
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      const id = `task-${i}`;
+      elementToId.set(el, id);
+
+      const isText = BuilderEffects.isTextElement(el);
+      const isSvg = el.tagName.toLowerCase() === 'svg' || el.querySelector('path') !== null;
+
+      // Check if this element is a repeating duplicate of an earlier sibling
+      const prevSibling = el.previousElementSibling as HTMLElement | null;
+      const isDuplicate =
+        prevSibling &&
+        elementToId.has(prevSibling) &&
+        prevSibling.tagName === el.tagName &&
+        Math.abs(prevSibling.getBoundingClientRect().width - rect.width) < 25 &&
+        Math.abs(prevSibling.getBoundingClientRect().height - rect.height) < 25;
+
+      let taskType: TaskType = 'rect';
+      let sourceElement: HTMLElement | undefined = undefined;
+
+      if (isDuplicate && prevSibling) {
+        taskType = 'dup';
+        sourceElement = prevSibling;
+      } else if (isText) {
+        taskType = 'text';
+      } else if (isSvg) {
+        taskType = 'path';
+      } else {
+        taskType = 'rect';
+      }
+
+      const deps: string[] = [];
+      if (sourceElement && elementToId.has(sourceElement)) {
+        deps.push(elementToId.get(sourceElement)!);
+      }
+
+      tasks.push({
+        id,
+        element: el,
+        rect,
+        boxType: i % 2 === 0 ? 'blue' : 'red',
+        assignedAgents: [],
+        targetPositions: [],
+        startTime: 0,
+        duration: 450,
+        isText,
+        completed: false,
+        spec: {
+          type: taskType,
+          sourceElement,
+          dx: sourceElement ? rect.left - sourceElement.getBoundingClientRect().left : 0,
+          dy: sourceElement ? rect.top - sourceElement.getBoundingClientRect().top : 0,
+        },
+        deps,
+      });
+    }
+
+    return tasks;
   }
 
   /**

@@ -18,6 +18,58 @@ export type AgentState =
 
 export type AgentType = 'pointer' | 'ibeam' | 'crosshair';
 
+export type CursorShape =
+  | 'arrow'
+  | 'dup'
+  | 'pen'
+  | 'pen-add'
+  | 'pen-close'
+  | 'cross'
+  | 'ibeam'
+  | 'ew'
+  | 'ns';
+
+export type TaskType = 'path' | 'rect' | 'text' | 'guide' | 'dup' | 'edit';
+
+export interface OverlayBoxSpec {
+  t: 'box';
+  b: { left: number; top: number; width: number; height: number };
+  handles?: boolean;
+  badge?: string;
+  rulerLines?: boolean;
+  underline?: { left: number; top: number; width: number; height: number };
+  color?: 'blue' | 'red';
+}
+
+export interface OverlayMeasureSpec {
+  t: 'measure';
+  a: Vector2D;
+  b: Vector2D;
+  label: string;
+}
+
+export interface OverlayGuideSpec {
+  t: 'guide';
+  axis: 'x' | 'y';
+  pos: number;
+  flash?: number;
+  opacity?: number;
+  dragging?: boolean;
+}
+
+export interface OverlayPathSpec {
+  t: 'path';
+  points: Vector2D[];
+  cursorPos?: Vector2D | null;
+  closed?: boolean;
+}
+
+export type OverlayItem =
+  | OverlayBoxSpec
+  | OverlayMeasureSpec
+  | OverlayGuideSpec
+  | OverlayPathSpec;
+
 export type BoundingBoxType = 'blue' | 'red';
 
 export type BuildOrder = 'top-to-bottom' | 'random' | 'viewport';
@@ -229,6 +281,18 @@ export interface ConstructionTask {
   boxElement?: HTMLElement;
   completed: boolean;
   cancelEffect?: () => void;
+  // Enhanced agentic task spec
+  spec?: {
+    type: TaskType;
+    sourceElement?: HTMLElement;
+    axis?: 'x' | 'y';
+    pos?: number;
+    guideline?: { axis: 'x' | 'y'; pos: number };
+    dx?: number;
+    dy?: number;
+    pathPoints?: Vector2D[];
+  };
+  deps?: string[];
 }
 
 export interface SwarmMetrics {

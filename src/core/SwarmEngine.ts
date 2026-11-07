@@ -4,35 +4,34 @@ import {
   SwarmConfig,
   SwarmMetrics,
   Vector2D,
-  BoundingBoxType,
+  OverlayItem,
+  ConstructionTask,
 } from '../types';
 import { Agent } from './Agent';
 import { BoidsPhysics } from './BoidsPhysics';
-import { OverlayManager, ActiveRulerSegment, BoxRect } from '../dom/OverlayManager';
+import { OverlayManager, BoxRect } from '../dom/OverlayManager';
 import { BuilderEffects } from '../dom/BuilderEffects';
 import { DomScanner } from '../dom/DomScanner';
-import { vec, dist, randomRange } from '../utils/math';
-
-interface ActiveTask {
-  id: string;
-  element: HTMLElement;
-  fullRect: BoxRect;
-  currentRect: BoxRect;
-  boxType: BoundingBoxType;
-  assignedAgents: Agent[];
-  targetPositions: Vector2D[];
-  cornerRoles: ('tl' | 'br' | 'tr' | 'bl' | 'mt' | 'mb' | 'badge' | 'ibeam')[];
-  phase: 'NAVIGATING' | 'DRAWING' | 'BUILDING' | 'DONE';
-  phaseStartTime: number;
-  boxElement: HTMLElement | null;
-  isText: boolean;
-  cancelReveal?: () => void;
-}
+import { vec, randomRange } from '../utils/math';
 
 const DEFAULT_CONFIG: ResolvedSwarmConfig = {
   agentCount: 36,
-  colors: ['#00A3FF', '#00C48C', '#FFAA00', '#FF007A', '#7B61FF', '#F24822', '#00E5FF', '#69DB7C'],
-  selector: '.swarm-item, .price-card, .interactive-card, .metric-card, .code-box, .hero-pill, header.navbar, .hero h1, .hero p, .hero-actions button, .swarm-card',
+  colors: [
+    '#F24E1E',
+    '#A259FF',
+    '#1ABCFE',
+    '#0ACF83',
+    '#FF7262',
+    '#FFC700',
+    '#9747FF',
+    '#E8467C',
+    '#14AE5C',
+    '#0D99FF',
+    '#FF8A00',
+    '#00B5CE',
+  ],
+  selector:
+    '.swarm-item, .price-card, .interactive-card, .metric-card, .code-box, .hero-pill, header.navbar, .hero h1, .hero p, .hero-actions button, .swarm-card',
   ignoreSelector: '[data-no-swarm], script, style, noscript, dom-swarm-overlay, .swarm-hud, .swarm-initial-hero',
   buildOnScroll: true,
   hideOnStart: true,
@@ -54,23 +53,34 @@ const DEFAULT_CONFIG: ResolvedSwarmConfig = {
   mouseAttractForce: 0.45,
   typewriterSpeed: 16,
   customAgentNames: [
-    'Figma AI',
-    'Cursor-01',
-    'Copilot',
-    'Agent-α',
-    'Agent-β',
-    'PixelCraft',
-    'Architect',
-    'DevBot',
+    'Ada',
+    'Linus',
+    'Grace',
+    'Alan',
+    'Margaret',
+    'Ken',
+    'Barbara',
+    'Dennis',
+    'Radia',
+    'Guido',
+    'Frances',
+    'Bjarne',
+    'Hedy',
+    'Tim',
+    'Katherine',
+    'Edsger',
+    'Joan',
+    'Donald',
   ],
   debug: false,
 };
 
 /**
  * Main orchestrator of dom-swarm:
- * When idle at top, 36 cursors orbit around the initial center logo.
- * As user scrolls, cursors actively swarm visible incoming elements, draw Figma blue boxes,
- * handles, and alignment guides, typing text with I-beams, not automatically on a timer.
+ * When idle at top, 36 cursors swirl smoothly around the initial center logo.
+ * As user scrolls, cursors actively construct the webpage using Figma tools:
+ * Crosshair rectangles with live dimensions, I-Beam text typing with carets,
+ * Alt-drag duplications with red measurement lines, and ruler alignment guidelines.
  */
 export class SwarmEngine implements DomSwarmInstance {
   private config: ResolvedSwarmConfig;
@@ -79,25 +89,36 @@ export class SwarmEngine implements DomSwarmInstance {
   private domScanner: DomScanner;
 
   private agents: Agent[] = [];
-  private activeTasks = new Map<string, ActiveTask>();
-  private buildQueue: HTMLElement[] = [];
-  private completedElements = new Set<HTMLElement>();
-  private activeBoxTypeToggle = false;
+  private tasks: ConstructionTask[] = [];
+  private taskMap = new Map<string, ConstructionTask>();
+  private completedTaskIds = new Set<string>();
+  private activeTask: ConstructionTask | null = null;
 
   private mousePos: Vector2D | null = null;
-  private lastMouseMoveTime = 0;
-  private isMouseActive = false;
+  private lastMousePos: Vector2D | null = null;
+  private mouseVelocity: Vector2D = vec(0, 0);
 
-  private hasUserScrolled = false;
+  private started = false;
+  private flocking = false;
+  private time = 0;
+  private lastTime = 0;
+  private tempo = 2.1;
+  private scrollVel = 0;
+  private lastScrollY = 0;
+  private scrollFrontier = 0;
+
+  private rulersWant = 0;
+  private rulerT = 0;
+  private lastRulerNeed = -10;
+
   private initialLogoCenter: Vector2D | null = null;
+  private introLogoEl: HTMLElement | null = null;
 
   private animFrameId: number | null = null;
-  private lastTime = 0;
   private paused = false;
   private destroyed = false;
   private isFinishedState = false;
 
-  // Performance telemetry
   private frameCount = 0;
   private lastFpsUpdate = 0;
   private currentFps = 60;
@@ -122,7 +143,7 @@ export class SwarmEngine implements DomSwarmInstance {
       hideOnStart: this.config.hideOnStart,
       buildOrder: this.config.buildOrder,
       builderEffects: this.builderEffects,
-      onElementDiscovered: (el) => this.enqueueElement(el),
+      onElementDiscovered: (el) => this.onElementDiscovered(el),
     });
 
     this.init();
@@ -134,902 +155,958 @@ export class SwarmEngine implements DomSwarmInstance {
   private init(): void {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
-    // 1. Mount Shadow DOM container with Figma rulers
+    // 1. Mount Shadow DOM container
     this.overlayManager.mount(this.config.showRulers);
+    this.overlayManager.setRulersProgress(0);
 
-    // Initial rulers are hidden until user starts scrolling
-    this.overlayManager.setRulersVisible(false);
-
-    // 2. Identify initial logo center (e.g. #swarmLogo or screen center)
+    // 2. Locate initial center logo
     this.detectInitialLogoCenter();
 
-    // 3. Spawn 36 cursor agents around the initial center
+    // 3. Spawn cursor agents
     this.spawnAgents();
 
-    // 4. Register scroll & pointer listeners
+    // 4. Register listeners
     this.bindEvents();
 
-    // 5. Index elements below the fold
+    // 5. Index elements and build task graph
     const elements = this.domScanner.init();
-    this.buildQueue = [...elements];
+    this.tasks = this.domScanner.buildTaskGraph(elements);
+    this.tasks.forEach((t) => this.taskMap.set(t.id, t));
 
     // 6. Start simulation loop
     this.lastTime = performance.now();
     this.lastFpsUpdate = this.lastTime;
     this.animFrameId = requestAnimationFrame(this.renderLoop);
-
-    // If user loaded the page already scrolled down, trigger construction immediately
-    if (window.scrollY > 40) {
-      this.hasUserScrolled = true;
-      this.overlayManager.setRulersVisible(true);
-      this.processBuildQueue();
-    }
   }
 
   /**
-   * Detects the initial center logo element if present on the page.
+   * Detects initial logo center (e.g. .swarm-initial-hero or viewport center).
    */
   private detectInitialLogoCenter(): void {
-    const logoEl = document.querySelector<HTMLElement>('#swarmCenterLogo, .swarm-initial-hero, .logo');
-    if (logoEl) {
-      const rect = logoEl.getBoundingClientRect();
-      this.initialLogoCenter = vec(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    this.introLogoEl =
+      document.querySelector<HTMLElement>('.swarm-initial-hero') ||
+      document.querySelector<HTMLElement>('.intro-logo') ||
+      document.querySelector<HTMLElement>('#swarmLogo');
+
+    if (this.introLogoEl) {
+      const rect = this.introLogoEl.getBoundingClientRect();
+      this.initialLogoCenter = {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      };
     } else {
-      this.initialLogoCenter = vec(
-        (window.innerWidth || 1024) / 2,
-        (window.innerHeight || 768) / 2
-      );
+      this.initialLogoCenter = {
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      };
     }
   }
 
   /**
-   * Spawns 36 cursor agents clustered in an orbit around the center.
+   * Spawns cursor agents in a swirling ring around the center logo.
    */
   private spawnAgents(): void {
-    const center = this.initialLogoCenter || vec(
-      (window.innerWidth || 1024) / 2,
-      (window.innerHeight || 768) / 2
-    );
+    const center = this.initialLogoCenter || {
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+    };
+    const count = this.config.agentCount;
 
-    for (let i = 0; i < this.config.agentCount; i++) {
-      const color = this.config.colors[i % this.config.colors.length] || '#00A3FF';
-      const label =
-        this.config.customAgentNames[i % this.config.customAgentNames.length] ||
-        `Agent-${i + 1}`;
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      const radius = 160;
+      const initialPos = {
+        x: center.x + Math.cos(angle) * radius,
+        y: center.y + Math.sin(angle) * radius,
+      };
 
-      // Distribute in an elliptical ring around center logo
-      const angle = (i / this.config.agentCount) * Math.PI * 2;
-      const radiusX = 140 + (i % 3) * 20;
-      const radiusY = 95 + (i % 3) * 15;
-
-      const pos = vec(
-        center.x + Math.cos(angle) * radiusX + randomRange(-10, 10),
-        center.y + Math.sin(angle) * radiusY + randomRange(-10, 10)
-      );
+      const color = this.config.colors[i % this.config.colors.length] || '#0D99FF';
+      const name = this.config.customAgentNames[i % this.config.customAgentNames.length] || `Agent-${i}`;
 
       const agent = new Agent(
-        i + 1,
+        i,
         color,
-        label,
-        pos,
+        name,
+        initialPos,
         this.overlayManager,
         this.config.maxSpeed,
         this.config.maxForce,
         this.config.showAgentNames
       );
 
+      agent.follow = true;
+      agent.home = i < 6 ? { x: initialPos.x, y: initialPos.y } : null;
       this.agents.push(agent);
     }
   }
 
   /**
-   * Binds pointer, touch, scroll, and resize listeners.
+   * Binds scroll, mouse, and resize event handlers.
    */
   private bindEvents(): void {
     window.addEventListener('mousemove', this.onMouseMove, { passive: true });
     window.addEventListener('touchstart', this.onTouchMove, { passive: true });
     window.addEventListener('touchmove', this.onTouchMove, { passive: true });
     window.addEventListener('scroll', this.onScroll, { passive: true });
+    window.addEventListener('wheel', this.onWheel, { passive: true });
     window.addEventListener('resize', this.onResize, { passive: true });
   }
 
   private onMouseMove = (e: MouseEvent): void => {
     this.mousePos = { x: e.clientX, y: e.clientY };
-    this.lastMouseMoveTime = performance.now();
-    this.isMouseActive = true;
   };
 
   private onTouchMove = (e: TouchEvent): void => {
-    if (e.touches && e.touches[0]) {
+    if (e.touches.length > 0 && e.touches[0]) {
       this.mousePos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      this.lastMouseMoveTime = performance.now();
-      this.isMouseActive = true;
     }
   };
 
-  /**
-   * Scroll event listener: drives the construction of elements strictly as user scrolls.
-   */
   private onScroll = (): void => {
     const scrollY = window.scrollY || window.pageYOffset || 0;
-
-    if (!this.hasUserScrolled && scrollY > 5) {
-      this.hasUserScrolled = true;
-      const intro = document.getElementById('swarmCenterLogo') || document.getElementById('introLogo');
-      if (intro) intro.classList.add('gone');
-      if (this.config.showRulers) {
-        this.overlayManager.setRulersVisible(true);
-      }
+    if (scrollY > 4 && !this.started) {
+      this.start();
     }
+  };
 
-    // Check if user has reached bottom of page
-    const scrollHeight = document.documentElement.scrollHeight;
-    const clientHeight = document.documentElement.clientHeight;
-    const isAtBottom = scrollY + clientHeight >= scrollHeight - 60;
-
-    if (isAtBottom && this.buildQueue.length === 0 && this.activeTasks.size === 0 && !this.isFinishedState) {
-      // At bottom: hide rulers and let cursors converge into user pointer or flock at footer
-      this.overlayManager.setRulersVisible(false);
-      this.isFinishedState = true;
-      if (this.config.vanishAtCursor) {
-        this.triggerVanishAtCursor();
-      }
+  private onWheel = (): void => {
+    if (!this.started) {
+      this.start();
     }
-
-    // Process elements entering viewport during active scrolling
-    this.syncActiveBoundingBoxes();
-    this.processBuildQueue();
   };
 
   private onResize = (): void => {
     this.detectInitialLogoCenter();
-    this.syncActiveBoundingBoxes();
   };
 
+  private onElementDiscovered(el: HTMLElement): void {
+    if (!this.taskMap.has(el.id)) {
+      const freshTasks = this.domScanner.buildTaskGraph([el]);
+      freshTasks.forEach((t) => {
+        this.tasks.push(t);
+        this.taskMap.set(t.id, t);
+      });
+    }
+  }
+
   /**
-   * Main simulation and animation loop running on requestAnimationFrame.
+   * Starts agentic construction: fades intro logo and releases cursors.
+   */
+  public start(): void {
+    if (this.started) return;
+    this.started = true;
+
+    if (this.introLogoEl) {
+      this.introLogoEl.classList.add('gone');
+    }
+
+    for (const a of this.agents) {
+      a.follow = false;
+      a.gen = null;
+      a.angle = (((a.angle + 180) % 360) + 360) % 360 - 180;
+    }
+
+    this.rulersWant++;
+    this.lastRulerNeed = this.time;
+  }
+
+  /**
+   * Main animation frame simulation loop.
    */
   private renderLoop = (timestamp: number): void => {
     if (this.destroyed) return;
 
+    const rawDt = (timestamp - this.lastTime) / 1000;
+    const dt = Math.min(Math.max(rawDt, 0.001), 0.05);
+    this.lastTime = timestamp;
+    this.time += dt;
+
     if (!this.paused) {
-      const rawDt = (timestamp - this.lastTime) / 16.666;
-      const dt = Math.min(Math.max(rawDt, 0.1), 3.0);
-      this.lastTime = timestamp;
+      this.step(dt);
+    }
 
-      // Telemetry calculation
-      this.frameCount++;
-      if (timestamp - this.lastFpsUpdate >= 1000) {
-        this.currentFps = Math.round((this.frameCount * 1000) / (timestamp - this.lastFpsUpdate));
-        this.frameCount = 0;
-        this.lastFpsUpdate = timestamp;
-      }
-
-      if (this.isMouseActive && timestamp - this.lastMouseMoveTime > 2500) {
-        this.isMouseActive = false;
-      }
-
-      // Update active tasks (NAVIGATING -> BUILDING -> DONE)
-      this.updateActiveTasks(timestamp);
-
-      // Determine orbit focal center:
-      // If user has not scrolled yet, orbit around center logo!
-      const viewport = {
-        width: window.innerWidth || 1024,
-        height: window.innerHeight || 768,
-      };
-
-      const scrollY = window.scrollY || 0;
-      const timeSeconds = timestamp / 1000;
-      const activeList = Array.from(this.activeTasks.values());
-
-      // Update agent physics and transforms
-      for (let i = 0; i < this.agents.length; i++) {
-        const agent = this.agents[i];
-        if (!agent || agent.state === 'VANISHED') continue;
-
-        if (agent.state === 'IDLE_FLOCKING' || agent.state === 'RETURNING_TO_SWARM') {
-          let agentFocal: Vector2D | null = null;
-          if (!this.hasUserScrolled && scrollY < 5) {
-            agentFocal = this.initialLogoCenter || vec(viewport.width / 2, viewport.height / 2);
-          } else if (this.isMouseActive && this.mousePos) {
-            agentFocal = this.mousePos;
-          } else if (activeList.length > 0) {
-            const task = activeList[i % activeList.length];
-            if (task) {
-              agentFocal = vec(
-                task.currentRect.left + task.currentRect.width / 2,
-                task.currentRect.top + task.currentRect.height / 2
-              );
-            }
-          } else if (this.buildQueue.length > 0 && this.buildQueue[0]) {
-            const nextEl = this.buildQueue[0];
-            const r = nextEl.getBoundingClientRect();
-            agentFocal = vec(r.left + r.width / 2, r.top + r.height / 2);
-          } else {
-            agentFocal = vec(viewport.width / 2, viewport.height / 2);
-          }
-
-          const force = BoidsPhysics.calculateFlockingForces(
-            agent,
-            this.agents,
-            agentFocal,
-            this.config,
-            viewport,
-            timeSeconds
-          );
-          agent.applyForce(force);
-
-          if (agent.state === 'RETURNING_TO_SWARM') {
-            const vSq = agent.velocity.x * agent.velocity.x + agent.velocity.y * agent.velocity.y;
-            if (vSq < 4.0) {
-              agent.setIdle();
-              this.config.onAgentStateChange?.(agent.id, 'IDLE_FLOCKING');
-            }
-          }
-        } else if (agent.state === 'MOVING_TO_TARGET') {
-          if (agent.targetPosition) {
-            const seekForce = BoidsPhysics.seek(agent, agent.targetPosition, 50);
-            agent.applyForce(seekForce);
-          }
-        } else if (agent.state === 'CONSTRUCTING_ELEMENT') {
-          // Absolute edge/corner handle locking is maintained in syncActiveBoundingBoxes
-        } else if (agent.state === 'CONVERGING_TO_USER') {
-          if (this.mousePos) {
-            agent.targetPosition = { ...this.mousePos };
-          }
-          if (agent.targetPosition) {
-            const seekForce = BoidsPhysics.seek(agent, agent.targetPosition, 60);
-            agent.applyForce(seekForce);
-          }
-        }
-
-        agent.update(dt, this.overlayManager);
-      }
-
-      // Keep bounding boxes and ruler coordinate segments locked to active elements
-      this.syncActiveBoundingBoxes();
+    this.frameCount++;
+    if (timestamp - this.lastFpsUpdate >= 500) {
+      this.currentFps = Math.round((this.frameCount * 1000) / (timestamp - this.lastFpsUpdate));
+      this.frameCount = 0;
+      this.lastFpsUpdate = timestamp;
     }
 
     this.animFrameId = requestAnimationFrame(this.renderLoop);
   };
 
   /**
-   * Advances active construction tasks through NAVIGATING -> DRAWING -> BUILDING -> DONE phases.
+   * Advances the simulation state by dt seconds.
    */
-  private updateActiveTasks(timestamp: number): void {
-    if (this.activeTasks.size === 0) return;
+  private step(dt: number): void {
+    const currentScrollY = window.scrollY || window.pageYOffset || 0;
+    const scrollDelta = Math.abs(currentScrollY - this.lastScrollY);
+    this.lastScrollY = currentScrollY;
 
-    this.activeTasks.forEach((task) => {
-      if (task.phase === 'NAVIGATING') {
-        let hasArrived = false;
-        for (let i = 0; i < task.assignedAgents.length; i++) {
-          const a = task.assignedAgents[i];
-          const target = task.targetPositions[i] || task.targetPositions[0];
-          if (a && target && dist(a.position, target) < 45) {
-            hasArrived = true;
-            break;
-          }
-        }
+    // Track scroll velocity & dynamic construction tempo
+    const r = scrollDelta / Math.max(dt, 0.001);
+    this.scrollVel = Math.max(this.scrollVel * Math.exp(-dt * 1.2), this.scrollVel * 0.7 + r * 0.3);
 
-        const elapsed = timestamp - task.phaseStartTime;
-        if (hasArrived || elapsed > 250) {
-          // Cursors reached origin: START LIVE DIAGONAL BOX DRAWING!
-          task.phase = 'DRAWING';
-          task.phaseStartTime = timestamp;
-          const liveRect = task.element.getBoundingClientRect();
-          task.fullRect = liveRect;
-          task.currentRect = {
-            left: liveRect.left,
-            top: liveRect.top,
-            width: 12,
-            height: 12,
-          };
-
-          task.boxElement = this.overlayManager.createBoundingBox(
-            task.id,
-            task.currentRect,
-            task.boxType,
-            this.config.showDimensions,
-            this.config.showGuides
-          );
-
-          if (this.config.showRulers) {
-            this.overlayManager.setRulersVisible(true);
-          }
-        }
-      } else if (task.phase === 'DRAWING') {
-        const elapsed = timestamp - task.phaseStartTime;
-        const drawDuration = 220; // 220ms fast diagonal drag
-        const progress = Math.min(elapsed / drawDuration, 1);
-        const ease = 1 - Math.pow(1 - progress, 3); // Ease out cubic
-
-        const liveRect = task.element.getBoundingClientRect();
-        task.fullRect = liveRect;
-
-        const curW = Math.max(12, ease * liveRect.width);
-        const curH = Math.max(12, ease * liveRect.height);
-
-        task.currentRect = {
-          left: liveRect.left,
-          top: liveRect.top,
-          width: curW,
-          height: curH,
-        };
-
-        if (task.boxElement) {
-          this.overlayManager.updateBoundingBox(task.boxElement, task.currentRect, task.id);
-        }
-
-        // DRAG AGENTS WITH THE EXPANDING BOX:
-        task.assignedAgents.forEach((agent, i) => {
-          const role = task.cornerRoles[i] || (i === 0 ? 'tl' : 'br');
-          let targetX = liveRect.left;
-          let targetY = liveRect.top;
-          let heading = -20;
-
-          if (role === 'tl') {
-            targetX = liveRect.left;
-            targetY = liveRect.top;
-            heading = -20;
-          } else if (role === 'br') {
-            targetX = liveRect.left + curW;
-            targetY = liveRect.top + curH;
-            heading = -45;
-          } else if (role === 'tr') {
-            targetX = liveRect.left + curW;
-            targetY = liveRect.top;
-            heading = -65;
-          } else if (role === 'bl') {
-            targetX = liveRect.left;
-            targetY = liveRect.top + curH;
-            heading = 25;
-          } else if (role === 'mt') {
-            targetX = liveRect.left + curW / 2;
-            targetY = liveRect.top;
-            heading = -30;
-          } else if (role === 'mb') {
-            targetX = liveRect.left + curW / 2;
-            targetY = liveRect.top + curH;
-            heading = 30;
-          } else if (role === 'badge') {
-            targetX = liveRect.left + curW / 2;
-            targetY = liveRect.top + curH + 16;
-            heading = 0;
-          } else if (role === 'ibeam') {
-            targetX = liveRect.left + 8;
-            targetY = liveRect.top + curH / 2;
-            heading = 0;
-          }
-
-          agent.position.x = targetX;
-          agent.position.y = targetY;
-          agent.velocity = vec(0, 0);
-          agent.acceleration = vec(0, 0);
-          agent.headingAngle = heading;
-        });
-
-        if (progress >= 1) {
-          // Drawing complete! Now reveal element content while cursors hold handles
-          task.phase = 'BUILDING';
-          task.phaseStartTime = timestamp;
-
-          task.assignedAgents.forEach((a) => {
-            a.setConstructing();
-            this.config.onAgentStateChange?.(a.id, 'CONSTRUCTING_ELEMENT');
-          });
-
-          task.cancelReveal = this.builderEffects.executeReveal(
-            task.element,
-            task.isText,
-            this.config.typewriterEffect,
-            this.config.buildDuration,
-            () => {
-              this.completeTask(task.id);
-            }
-          );
-        }
-      }
-    });
-  }
-
-  /**
-   * Processes elements from the queue when scrolling brings them into view (not automatically).
-   */
-  private processBuildQueue(): void {
-    if (this.destroyed || this.paused) return;
-
-    // Only construct elements if the user has started scrolling
-    const scrollY = window.scrollY || window.pageYOffset || 0;
-    if (!this.hasUserScrolled && scrollY < 5) return;
-
-    // STRICTLY ONE-BY-ONE: Never build multiple elements simultaneously if concurrency is 1
-    if (this.activeTasks.size >= this.config.concurrency) return;
-
-    while (this.buildQueue.length > 0) {
-      const visibleIndex = this.buildQueue.findIndex((el) => this.isElementInScrollWindow(el));
-      if (visibleIndex < 0) break; // Next elements are not visible yet! Wait for user scroll!
-
-      const nextElement = this.buildQueue.splice(visibleIndex, 1)[0];
-      if (nextElement && !this.completedElements.has(nextElement)) {
-        this.constructElement(nextElement);
-        // STRICTLY ONE AT A TIME: Launch this element, then wait for it to finish!
-        break;
-      }
+    if (this.started) {
+      this.scrollFrontier = Math.max(this.scrollFrontier, currentScrollY + window.innerHeight + 120);
     }
 
-    if (this.buildQueue.length === 0 && this.activeTasks.size === 0 && !this.isFinishedState) {
-      this.config.onAllElementsConstructed?.();
-      this.overlayManager.setRulersVisible(false);
+    // Track mouse velocity
+    if (this.mousePos && this.lastMousePos && dt > 0) {
+      const h = Math.min(1, dt * 18);
+      this.mouseVelocity.x += ((this.mousePos.x - this.lastMousePos.x) / dt - this.mouseVelocity.x) * h;
+      this.mouseVelocity.y += ((this.mousePos.y - this.lastMousePos.y) / dt - this.mouseVelocity.y) * h;
+    }
+    this.lastMousePos = this.mousePos ? { ...this.mousePos } : null;
+
+    const pendingCount = this.tasks.filter((t) => !this.completedTaskIds.has(t.id)).length;
+    this.tempo = Math.max(2.1, Math.min(4.5, 2.1 + this.scrollVel / 900 + pendingCount * 0.15));
+
+    // Rulers slide-in animation
+    if (this.rulersWant > 0) {
+      this.lastRulerNeed = this.time;
+    }
+    const rulerTarget = this.started && (this.rulersWant > 0 || this.time - this.lastRulerNeed < 0.7) ? 1 : 0;
+    this.rulerT += (rulerTarget - this.rulerT) * Math.min(1, dt * 10);
+    if (Math.abs(rulerTarget - this.rulerT) < 0.002) {
+      this.rulerT = rulerTarget;
+    }
+    this.overlayManager.setRulersProgress(this.rulerT);
+
+    // Initial state: cursors follow & swirl around center logo
+    if (!this.started) {
+      const center = this.initialLogoCenter || {
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      };
+      const focal = this.mousePos || center;
+      const near = BoidsPhysics.follow(dt, this.agents, focal, this.mousePos, this.mouseVelocity, this.time, 0.7);
+      if (near && this.mousePos && currentScrollY > 0) {
+        this.start();
+      }
+      this.agents.forEach((a) => a.update(dt, this.overlayManager));
+      return;
+    }
+
+    // Finale: if all tasks are complete, switch to flocking around user cursor
+    const allDone = this.tasks.length > 0 && this.tasks.every((t) => this.completedTaskIds.has(t.id));
+    if (allDone && !this.flocking) {
+      this.flocking = true;
       this.isFinishedState = true;
-      if (this.config.vanishAtCursor) {
-        this.triggerVanishAtCursor();
+      this.config.onAllElementsConstructed?.();
+      for (const a of this.agents) {
+        a.follow = true;
+        a.gen = null;
+        a.ov = null;
+        a.setShape('arrow', this.overlayManager);
       }
     }
-  }
 
-  /**
-   * Checks whether an element is inside the current scroll window.
-   */
-  private isElementInScrollWindow(el: HTMLElement): boolean {
-    const rect = el.getBoundingClientRect();
-    const vHeight = window.innerHeight || 800;
-    const vWidth = window.innerWidth || 1024;
-    return (
-      rect.bottom > -40 &&
-      rect.right > 0 &&
-      rect.top < vHeight + 180 &&
-      rect.left < vWidth
-    );
-  }
+    if (this.flocking) {
+      const target = this.mousePos || {
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+      };
+      BoidsPhysics.follow(dt, this.agents, target, this.mousePos, this.mouseVelocity, this.time, 1);
+      this.agents.forEach((a) => a.update(dt, this.overlayManager));
 
-  /**
-   * Determines how many agents should construct a given element.
-   * Large blocks receive 7 agents (4 corners, 2 edges, 1 badge).
-   * Text nodes receive 4 agents (I-beam typing, TL, BR, badge).
-   */
-  private getRequiredAgentCount(isText: boolean, rect: DOMRect): number {
-    if (isText) {
-      return 4; // 1 ibeam + 1 tl + 1 br + 1 badge
-    }
-    // Block element: cards, terminals, pricing cards, hero container, code blocks
-    if (rect.width >= 120 && rect.height >= 40) {
-      return 7; // tl, br, tr, bl, mt, mb, badge
-    }
-    return 4; // tl, br, tr, bl
-  }
-
-  /**
-   * Dispatches agents to an element's edges/corners to construct it live.
-   */
-  private constructElement(element: HTMLElement): void {
-    const taskId = `task-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const rect = element.getBoundingClientRect();
-
-    if (rect.width < 5 || rect.height < 5) {
-      this.builderEffects.executeReveal(element, false, false, 50, () => {
-        this.constructedCount++;
-        this.completedElements.add(element);
-        this.processBuildQueue();
-      });
+      if (this.config.vanishAtCursor && this.mousePos) {
+        this.agents.forEach((a) => {
+          if (a.state !== 'VANISHED' && a.state !== 'CONVERGING_TO_USER') {
+            a.state = 'CONVERGING_TO_USER';
+            a.targetPosition = { ...this.mousePos! };
+          }
+        });
+        if (this.agents.every((a) => a.state === 'VANISHED')) {
+          this.config.onSwarmVanished?.();
+        }
+      }
       return;
     }
 
-    const isText = BuilderEffects.isTextElement(element);
-    const boxType = this.activeBoxTypeToggle ? 'red' : 'blue';
-    this.activeBoxTypeToggle = !this.activeBoxTypeToggle;
+    // Task Dispatching
+    this.dispatchTasks();
 
-    const elementCenter = vec(rect.left + rect.width / 2, rect.top + rect.height / 2);
-    const needed = this.getRequiredAgentCount(isText, rect);
-    const assigned = this.pickNearestAgents(elementCenter, needed);
+    // Step active generator coroutines
+    for (const a of this.agents) {
+      if (a.follow) continue;
 
-    if (assigned.length === 0) {
-      // Put back in queue to build when agents finish current work - never auto-reveal without cursors!
-      this.buildQueue.unshift(element);
-      return;
+      if (a.gen) {
+        const res = a.gen.next(dt);
+        if (res.done) {
+          a.gen = null;
+          a.ov = null;
+          a.setShape('arrow', this.overlayManager);
+          if (this.activeTask) {
+            this.completedTaskIds.add(this.activeTask.id);
+            this.constructedCount++;
+            this.config.onElementConstructed?.(this.activeTask.element);
+            this.activeTask = null;
+          }
+        }
+      } else {
+        // Idle cursor movement: halo orbit around the active task
+        if (this.activeTask) {
+          const rect = this.activeTask.element.getBoundingClientRect();
+          const focal = {
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2,
+          };
+          const force = BoidsPhysics.orbitalHalo(a, focal, this.time);
+          a.applyForce(force);
+          const sep = BoidsPhysics.separate(a, this.agents, 60);
+          a.applyForce(sep);
+          a.update(dt, this.overlayManager);
+        } else {
+          // Roam gently
+          const focal = this.mousePos || {
+            x: window.innerWidth / 2,
+            y: window.innerHeight / 2,
+          };
+          const force = BoidsPhysics.orbitalHalo(a, focal, this.time);
+          a.applyForce(force);
+          a.update(dt, this.overlayManager);
+        }
+      }
     }
 
-    // Assign corner/edge roles to agents
-    const cornerRoles: ('tl' | 'br' | 'tr' | 'bl' | 'mt' | 'mb' | 'badge' | 'ibeam')[] = [];
-    const targets: Vector2D[] = [];
-
-    if (isText) {
-      cornerRoles.push('ibeam');
-      targets.push(vec(rect.left + 8, rect.top + rect.height / 2));
-      cornerRoles.push('tl');
-      targets.push(vec(rect.left, rect.top));
-      cornerRoles.push('br');
-      targets.push(vec(rect.right, rect.bottom));
-      if (assigned.length > 3) {
-        cornerRoles.push('badge');
-        targets.push(vec(rect.left + rect.width / 2, rect.bottom + 16));
+    // Collect and render dynamic overlays
+    const overlayItems: OverlayItem[] = [];
+    for (const a of this.agents) {
+      if (a.ov) {
+        overlayItems.push(...a.ov());
       }
+    }
+    this.overlayManager.renderDynamicOverlays(overlayItems, this.rulerT);
+
+    // Update active ruler coordinate highlight strips
+    if (this.activeTask) {
+      const rect = this.activeTask.element.getBoundingClientRect();
+      this.overlayManager.updateRulerSegments([
+        {
+          left: rect.left,
+          width: rect.width,
+          top: rect.top,
+          height: rect.height,
+        },
+      ]);
     } else {
-      const allRoles: ('tl' | 'br' | 'tr' | 'bl' | 'mt' | 'mb' | 'badge')[] = [
-        'tl', 'br', 'tr', 'bl', 'mt', 'mb', 'badge'
-      ];
-      for (let i = 0; i < assigned.length; i++) {
-        const role = allRoles[i] || 'br';
-        cornerRoles.push(role);
-        if (role === 'tl') targets.push(vec(rect.left, rect.top));
-        else if (role === 'br') targets.push(vec(rect.right, rect.bottom));
-        else if (role === 'tr') targets.push(vec(rect.right, rect.top));
-        else if (role === 'bl') targets.push(vec(rect.left, rect.bottom));
-        else if (role === 'mt') targets.push(vec(rect.left + rect.width / 2, rect.top));
-        else if (role === 'mb') targets.push(vec(rect.left + rect.width / 2, rect.bottom));
-        else if (role === 'badge') targets.push(vec(rect.left + rect.width / 2, rect.bottom + 16));
-      }
+      this.overlayManager.updateRulerSegments([]);
+    }
+  }
+
+  /**
+   * Finds next available task and assigns it to a cursor agent.
+   */
+  private dispatchTasks(): void {
+    if (this.activeTask !== null && this.config.concurrency === 1) {
+      return;
     }
 
-    const task: ActiveTask = {
-      id: taskId,
-      element,
-      fullRect: rect,
-      currentRect: {
-        left: rect.left,
-        top: rect.top,
-        width: 12,
-        height: 12,
-      },
-      boxType,
-      assignedAgents: assigned,
-      targetPositions: targets,
-      cornerRoles,
-      phase: 'NAVIGATING',
-      phaseStartTime: performance.now(),
-      boxElement: null,
-      isText,
+    const available = this.tasks.filter((t) => {
+      if (this.completedTaskIds.has(t.id)) return false;
+      if (t === this.activeTask) return false;
+
+      // Check dependencies
+      if (t.deps && t.deps.length > 0) {
+        if (!t.deps.every((depId) => this.completedTaskIds.has(depId))) {
+          return false;
+        }
+      }
+
+      // Check scroll frontier
+      const rect = t.element.getBoundingClientRect();
+      const docTop = rect.top + (window.scrollY || window.pageYOffset || 0);
+      return docTop <= this.scrollFrontier;
+    });
+
+    if (available.length === 0 || !available[0]) return;
+
+    // Pick closest task to view top
+    const nextTask = available[0];
+    const idleAgent = this.agents.find((a) => !a.gen && !a.follow);
+    if (!idleAgent) return;
+
+    this.activeTask = nextTask;
+    idleAgent.worked = true;
+    idleAgent.gen = this.runTask(idleAgent, nextTask);
+  }
+
+  /**
+   * Main agentic task coroutine.
+   */
+  private *runTask(agent: Agent, task: ConstructionTask): Generator<void, void, number> {
+    const spec = task.spec;
+    if (!spec) return;
+
+    switch (spec.type) {
+      case 'rect':
+        yield* this.drawRect(agent, task);
+        break;
+      case 'text':
+        yield* this.drawText(agent, task);
+        break;
+      case 'dup':
+        yield* this.duplicate(agent, task);
+        break;
+      case 'path':
+        yield* this.drawPath(agent, task);
+        break;
+      case 'guide':
+        yield* this.dragGuide(agent, task);
+        break;
+    }
+  }
+
+  /**
+   * Rectangle / Card construction coroutine:
+   * Crosshair drafting, live drag box, final styling transition, handles, and dimensions badge.
+   */
+  private *drawRect(agent: Agent, task: ConstructionTask): Generator<void, void, number> {
+    const el = task.element;
+    const r = el.getBoundingClientRect();
+    const rect: BoxRect = {
+      left: r.left,
+      top: r.top,
+      width: r.width,
+      height: r.height,
     };
 
-    this.activeTasks.set(taskId, task);
+    agent.setShape('cross', this.overlayManager);
+    yield* agent.moveTo({ x: rect.left, y: rect.top }, { speed: 1.2, tempo: this.tempo });
+    yield* agent.click(this.tempo);
 
-    // Dispatch cursors directly to origin with speed boost
-    assigned.forEach((agent, idx) => {
-      const targetCoord = targets[idx] || elementCenter;
-      const isIBeamRole = isText && cornerRoles[idx] === 'ibeam';
-      agent.assignTarget(targetCoord, element, taskId, isIBeamRole, this.overlayManager);
-      this.config.onAgentStateChange?.(agent.id, 'MOVING_TO_TARGET');
-    });
-  }
+    this.builderEffects.setDrafting(el, true);
 
-  /**
-   * Completes a task, removes bounding box, releases agents, and processes next elements.
-   */
-  private completeTask(taskId: string): void {
-    const task = this.activeTasks.get(taskId);
-    if (!task || task.phase === 'DONE') return;
+    const activeBox: BoxRect = {
+      left: rect.left,
+      top: rect.top,
+      width: 0,
+      height: 0,
+    };
 
-    task.phase = 'DONE';
+    agent.ov = () => [
+      {
+        t: 'box',
+        b: activeBox,
+        color: 'blue',
+      },
+    ];
 
-    if (task.boxElement) {
-      this.overlayManager.removeBoundingBox(task.boxElement, task.id);
-    }
-
-    task.assignedAgents.forEach((agent) => {
-      if (agent.assignedTaskId === taskId) {
-        agent.returnToSwarm(this.overlayManager);
-        this.config.onAgentStateChange?.(agent.id, 'RETURNING_TO_SWARM');
+    yield* agent.moveTo(
+      { x: rect.left + rect.width, y: rect.top + rect.height },
+      {
+        speed: 0.75,
+        drag: true,
+        bend: 0,
+        tempo: this.tempo,
+        onStep: () => {
+          activeBox.width = Math.max(0, agent.position.x - rect.left);
+          activeBox.height = Math.max(0, agent.position.y - rect.top);
+        },
       }
-    });
+    );
 
-    this.completedElements.add(task.element);
-    this.activeTasks.delete(taskId);
-    this.constructedCount++;
-    this.config.onElementConstructed?.(task.element);
+    activeBox.width = rect.width;
+    activeBox.height = rect.height;
 
-    this.processBuildQueue();
+    agent.setShape('arrow', this.overlayManager);
+    yield* agent.wait(0.2, this.tempo);
+
+    this.builderEffects.applyFinalStyles(el);
+
+    agent.ov = () => [
+      {
+        t: 'box',
+        b: rect,
+        handles: true,
+        badge: `${Math.round(rect.width)} × ${Math.round(rect.height)}`,
+        rulerLines: true,
+        color: 'blue',
+      },
+    ];
+
+    yield* agent.wait(0.35, this.tempo);
+    agent.ov = null;
   }
 
   /**
-   * Adds an element dynamically.
+   * Text construction coroutine:
+   * Crosshair framing, I-Beam typing with blinking caret, and dimensions badge.
    */
-  private enqueueElement(element: HTMLElement): void {
-    if (!this.buildQueue.includes(element) && !this.completedElements.has(element)) {
-      this.buildQueue.push(element);
-      this.processBuildQueue();
-    }
-  }
+  private *drawText(agent: Agent, task: ConstructionTask): Generator<void, void, number> {
+    const el = task.element;
+    const r = el.getBoundingClientRect();
+    const rect: BoxRect = {
+      left: r.left,
+      top: r.top,
+      width: r.width,
+      height: r.height,
+    };
 
-  /**
-   * Synchronizes active bounding boxes, locks assigned agents directly onto edges/corners,
-   * and updates top/left ruler coordinate segments.
-   */
-  private syncActiveBoundingBoxes(): void {
-    if (this.activeTasks.size === 0) {
-      if (this.config.showRulers) {
-        this.overlayManager.updateRulerSegments([]);
+    const fullText = this.builderEffects.getFullText(el);
+
+    // Crosshair frame draft
+    agent.setShape('cross', this.overlayManager);
+    yield* agent.moveTo({ x: rect.left, y: rect.top }, { speed: 1.2, tempo: this.tempo });
+    yield* agent.click(this.tempo);
+
+    const activeBox: BoxRect = {
+      left: rect.left,
+      top: rect.top,
+      width: 0,
+      height: rect.height,
+    };
+
+    agent.ov = () => [
+      {
+        t: 'box',
+        b: activeBox,
+        color: 'blue',
+      },
+    ];
+
+    yield* agent.moveTo(
+      { x: rect.left + rect.width, y: rect.top + rect.height },
+      {
+        speed: 0.9,
+        drag: true,
+        bend: 0,
+        tempo: this.tempo,
+        onStep: () => {
+          activeBox.width = Math.max(0, agent.position.x - rect.left);
+        },
       }
+    );
+
+    // Switch to I-Beam and type text
+    agent.setShape('ibeam', this.overlayManager);
+    this.builderEffects.prepareTextEditing(el);
+
+    agent.ov = () => [
+      {
+        t: 'box',
+        b: rect,
+        underline: { left: rect.left, top: rect.top + rect.height * 0.9, width: rect.width, height: 1 },
+      },
+    ];
+
+    yield* agent.moveTo({ x: rect.left + 8, y: rect.top + rect.height * 0.5 }, { speed: 1.5, tempo: this.tempo });
+
+    yield* agent.typeText(el, fullText, this.builderEffects, false, this.tempo);
+    yield* agent.wait(0.12, this.tempo);
+
+    this.builderEffects.finishTextEditing(el);
+    agent.setShape('arrow', this.overlayManager);
+
+    agent.ov = () => [
+      {
+        t: 'box',
+        b: rect,
+        handles: true,
+        badge: `${Math.round(rect.width)} × ${Math.round(rect.height)}`,
+        rulerLines: true,
+        color: 'blue',
+      },
+    ];
+
+    yield* agent.wait(0.3, this.tempo);
+    agent.ov = null;
+  }
+
+  /**
+   * Alt-Drag Duplicate coroutine:
+   * Selects source with handles, switches to Figma 'dup' cursor, drags duplicate with red
+   * wireframes and red distance measurement line, then double-clicks to edit text if different!
+   */
+  private *duplicate(agent: Agent, task: ConstructionTask): Generator<void, void, number> {
+    const el = task.element;
+    const sourceEl = task.spec?.sourceElement;
+    if (!sourceEl) {
+      yield* this.drawRect(agent, task);
       return;
     }
 
-    const rulerSegments: ActiveRulerSegment[] = [];
+    const sRect = sourceEl.getBoundingClientRect();
+    const tRect = el.getBoundingClientRect();
 
-    this.activeTasks.forEach((task) => {
-      const liveRect = task.element.getBoundingClientRect();
-      task.fullRect = liveRect;
+    const sourceBox: BoxRect = {
+      left: sRect.left,
+      top: sRect.top,
+      width: sRect.width,
+      height: sRect.height,
+    };
+    const targetBox: BoxRect = {
+      left: tRect.left,
+      top: tRect.top,
+      width: tRect.width,
+      height: tRect.height,
+    };
 
-      if (task.phase === 'BUILDING') {
-        task.currentRect = {
-          left: liveRect.left,
-          top: liveRect.top,
-          width: liveRect.width,
-          height: liveRect.height,
-        };
+    agent.setShape('arrow', this.overlayManager);
+    yield* agent.moveTo(
+      { x: sourceBox.left + sourceBox.width * 0.45, y: sourceBox.top + sourceBox.height * 0.45 },
+      { speed: 1.1, tempo: this.tempo }
+    );
+    yield* agent.click(this.tempo);
 
-        if (task.boxElement) {
-          this.overlayManager.updateBoundingBox(task.boxElement, task.currentRect, task.id);
-          rulerSegments.push({
-            left: task.currentRect.left,
-            width: task.currentRect.width,
-            top: task.currentRect.top,
-            height: task.currentRect.height,
-          });
-        }
+    agent.ov = () => [
+      {
+        t: 'box',
+        b: sourceBox,
+        handles: true,
+        badge: `${Math.round(sourceBox.width)} × ${Math.round(sourceBox.height)}`,
+      },
+    ];
+    yield* agent.wait(0.18, this.tempo);
 
-        // Lock assigned agents firmly onto the corners and edges of the bounding box
-        const elapsed = performance.now() - task.phaseStartTime;
-        task.assignedAgents.forEach((agent, i) => {
-          const role = task.cornerRoles[i] || (i === 0 ? 'tl' : 'br');
-          let targetX = liveRect.left;
-          let targetY = liveRect.top;
-          let heading = -20;
+    // Switch to duplicate cursor
+    agent.setShape('dup', this.overlayManager);
+    yield* agent.wait(0.12, this.tempo);
+    agent.press = 1;
 
-          if (role === 'tl') {
-            targetX = liveRect.left;
-            targetY = liveRect.top;
-            heading = -20;
-          } else if (role === 'br') {
-            targetX = liveRect.right;
-            targetY = liveRect.bottom;
-            heading = -45;
-          } else if (role === 'tr') {
-            targetX = liveRect.right;
-            targetY = liveRect.top;
-            heading = -65;
-          } else if (role === 'bl') {
-            targetX = liveRect.left;
-            targetY = liveRect.bottom;
-            heading = 25;
-          } else if (role === 'mt') {
-            targetX = liveRect.left + liveRect.width / 2;
-            targetY = liveRect.top;
-            heading = -30;
-          } else if (role === 'mb') {
-            targetX = liveRect.left + liveRect.width / 2;
-            targetY = liveRect.bottom;
-            heading = 30;
-          } else if (role === 'badge') {
-            targetX = liveRect.left + liveRect.width / 2;
-            targetY = liveRect.bottom + 16;
-            heading = 0;
-          } else if (role === 'ibeam') {
-            const buildDur = Math.max(this.config.buildDuration, 100);
-            const progress = Math.min(elapsed / (buildDur * 0.75), 1);
-            const textWidth = Math.min(
-              liveRect.width - 16,
-              Math.max(30, (task.element.textContent?.length || 10) * 8)
-            );
-            targetX = liveRect.left + 8 + progress * textWidth;
-            targetY = liveRect.top + liveRect.height / 2;
-            heading = 0;
-          }
+    const dx = targetBox.left - sourceBox.left;
+    const dy = targetBox.top - sourceBox.top;
+    this.builderEffects.prepareDuplicate(el, sourceEl, -dx, -dy);
 
-          agent.position.x = targetX;
-          agent.position.y = targetY;
-          agent.velocity = vec(0, 0);
-          agent.acceleration = vec(0, 0);
-          agent.headingAngle = heading;
-        });
-      } else if (task.phase === 'DRAWING') {
-        rulerSegments.push({
-          left: task.currentRect.left,
-          width: task.currentRect.width,
-          top: task.currentRect.top,
-          height: task.currentRect.height,
-        });
-      } else if (task.phase === 'NAVIGATING') {
-        // Keep targetPositions updated with live rect origin during scroll navigation
-        task.assignedAgents.forEach((_, i) => {
-          task.targetPositions[i] = vec(liveRect.left, liveRect.top);
-        });
-      }
+    const dragTarget = {
+      x: agent.position.x + dx,
+      y: agent.position.y + dy,
+    };
+
+    const movingTargetBox: BoxRect = {
+      left: sourceBox.left,
+      top: sourceBox.top,
+      width: targetBox.width,
+      height: targetBox.height,
+    };
+
+    agent.ov = () => [
+      { t: 'box', b: sourceBox, color: 'red' },
+      { t: 'box', b: movingTargetBox, color: 'red' },
+      {
+        t: 'measure',
+        a: { x: sourceBox.left + sourceBox.width, y: sourceBox.top + sourceBox.height / 2 },
+        b: { x: movingTargetBox.left, y: movingTargetBox.top + movingTargetBox.height / 2 },
+        label: `${Math.round(Math.hypot(dx, dy))}px`,
+      },
+    ];
+
+    yield* agent.moveTo(dragTarget, {
+      speed: 0.65,
+      drag: true,
+      bend: 0,
+      tempo: this.tempo,
+      onStep: () => {
+        const curDx = agent.position.x - dragTarget.x;
+        const curDy = agent.position.y - dragTarget.y;
+        this.builderEffects.updateDuplicateOffset(el, curDx, curDy);
+        movingTargetBox.left = targetBox.left + curDx;
+        movingTargetBox.top = targetBox.top + curDy;
+      },
     });
 
-    if (this.config.showRulers) {
-      this.overlayManager.updateRulerSegments(rulerSegments);
+    yield* agent.wait(0.1, this.tempo);
+    agent.setShape('arrow', this.overlayManager);
+    this.builderEffects.finishDuplicate(el);
+
+    agent.ov = () => [
+      {
+        t: 'box',
+        b: targetBox,
+        handles: true,
+        badge: `${Math.round(targetBox.width)} × ${Math.round(targetBox.height)}`,
+      },
+    ];
+    yield* agent.wait(0.3, this.tempo);
+    agent.ov = null;
+
+    // If text is different, double click to edit!
+    if (this.builderEffects.hasDifferentText(sourceEl, el)) {
+      yield* this.editText(agent, el, targetBox);
     }
   }
 
   /**
-   * Directs all agents to accelerate and converge into the user's cursor, then vanish.
+   * Double-click text editing coroutine:
+   * Double-clicks, selects all text (.swarm-text-sel), switches to I-Beam, types replacement text.
    */
-  private triggerVanishAtCursor(): void {
-    const targetUserPos = this.mousePos || vec(
-      (window.innerWidth || 1024) / 2,
-      (window.innerHeight || 768) / 2
+  private *editText(agent: Agent, el: HTMLElement, box: BoxRect): Generator<void, void, number> {
+    agent.setShape('arrow', this.overlayManager);
+    yield* agent.moveTo(
+      { x: box.left + Math.min(box.width * 0.5, 50), y: box.top + box.height * 0.55 },
+      { speed: 1.2, tempo: this.tempo }
     );
-    this.agents.forEach((agent) => {
-      agent.convergeTo(targetUserPos, this.overlayManager);
-      this.config.onAgentStateChange?.(agent.id, 'CONVERGING_TO_USER');
-    });
 
-    const checkInterval = setInterval(() => {
-      if (this.destroyed) {
-        clearInterval(checkInterval);
-        return;
-      }
-      const activeCount = this.getActiveAgentCount();
-      if (activeCount === 0) {
-        clearInterval(checkInterval);
-        this.config.onSwarmVanished?.();
-      }
-    }, 100);
+    // Double click!
+    yield* agent.click(this.tempo);
+    yield* agent.wait(0.08, this.tempo);
+    yield* agent.click(this.tempo);
+
+    this.builderEffects.selectAllText(el);
+    agent.setShape('ibeam', this.overlayManager);
+
+    agent.ov = () => [{ t: 'box', b: box }];
+    yield* agent.wait(0.25, this.tempo);
+
+    const replacement = this.builderEffects.getFullText(el);
+    yield* agent.typeText(el, replacement, this.builderEffects, true, this.tempo);
+    yield* agent.wait(0.12, this.tempo);
+
+    this.builderEffects.finishTextEditing(el);
+    agent.setShape('arrow', this.overlayManager);
+
+    agent.ov = () => [
+      {
+        t: 'box',
+        b: box,
+        handles: true,
+        badge: `${Math.round(box.width)} × ${Math.round(box.height)}`,
+      },
+    ];
+    yield* agent.wait(0.25, this.tempo);
+    agent.ov = null;
   }
 
   /**
-   * Selects nearest available agents for a construction assignment.
+   * Vector path drafting coroutine using the pen tool.
    */
-  private pickNearestAgents(target: Vector2D, count: number): Agent[] {
-    const idleAgents = this.agents.filter(
-      (a) => a.state === 'IDLE_FLOCKING' || a.state === 'RETURNING_TO_SWARM'
+  private *drawPath(agent: Agent, task: ConstructionTask): Generator<void, void, number> {
+    const el = task.element;
+    const r = el.getBoundingClientRect();
+    const pts: Vector2D[] = [
+      { x: r.left, y: r.top },
+      { x: r.left + r.width, y: r.top },
+      { x: r.left + r.width, y: r.top + r.height },
+      { x: r.left, y: r.top + r.height },
+    ];
+
+    const p0 = pts[0];
+    if (!p0) return;
+
+    agent.setShape('pen', this.overlayManager);
+    yield* agent.moveTo(p0, { speed: 1.2, tempo: this.tempo });
+    yield* agent.click(this.tempo);
+
+    const placedPts: Vector2D[] = [p0];
+    agent.ov = () => [
+      {
+        t: 'path',
+        points: placedPts,
+        cursorPos: { x: agent.position.x, y: agent.position.y },
+      },
+    ];
+
+    for (let i = 1; i < pts.length; i++) {
+      const curPt = pts[i];
+      if (!curPt) continue;
+      yield* agent.moveTo(curPt, {
+        bend: randomRange(-0.03, 0.03),
+        tempo: this.tempo,
+      });
+      yield* agent.click(this.tempo);
+      placedPts.push(curPt);
+      yield* agent.wait(0.08, this.tempo);
+    }
+
+    // Close path
+    agent.setShape('pen-close', this.overlayManager);
+    yield* agent.moveTo(p0, { speed: 1.2, tempo: this.tempo });
+    yield* agent.click(this.tempo);
+
+    agent.ov = () => [
+      {
+        t: 'path',
+        points: placedPts,
+        closed: true,
+      },
+    ];
+
+    agent.setShape('pen', this.overlayManager);
+    yield* agent.moveTo(
+      { x: agent.position.x + 20, y: agent.position.y + 15 },
+      { speed: 1.4, tempo: this.tempo }
     );
+    yield* agent.wait(0.25, this.tempo);
 
-    idleAgents.sort((a, b) => {
-      const distA = dist(a.position, target);
-      const distB = dist(b.position, target);
-      return distA - distB;
-    });
-
-    return idleAgents.slice(0, count);
+    this.builderEffects.applyFinalStyles(el);
+    agent.ov = null;
   }
 
   /**
-   * Public API: Replays the whole swarm construction from the beginning.
+   * Guideline dragging coroutine:
+   * Slides rulers down, moves to ruler, grabs guideline with 'ew'/'ns' cursor,
+   * drags across/down, snaps into place, flashes guide line with drop-shadow.
+   */
+  private *dragGuide(agent: Agent, task: ConstructionTask): Generator<void, void, number> {
+    this.rulersWant++;
+    const axis = task.spec?.axis || 'x';
+    const pos = task.spec?.pos || 120;
+
+    const startPos =
+      axis === 'x'
+        ? { x: 10, y: Math.max(100, Math.min(window.innerHeight * 0.6, pos)) }
+        : { x: Math.max(100, Math.min(window.innerWidth * 0.5, pos)), y: 10 };
+
+    agent.setShape('arrow', this.overlayManager);
+    yield* agent.moveTo(startPos, { speed: 1.5, tempo: this.tempo });
+
+    while (this.rulerT < 0.95) {
+      yield;
+    }
+
+    agent.press = 1;
+    agent.setShape(axis === 'x' ? 'ew' : 'ns', this.overlayManager);
+
+    let curPos = startPos[axis];
+    agent.ov = () => [
+      {
+        t: 'guide',
+        axis,
+        pos: curPos,
+        opacity: 0.85,
+      },
+    ];
+
+    const targetPos =
+      axis === 'x' ? { x: pos, y: startPos.y + 40 } : { x: startPos.x + 30, y: pos };
+
+    yield* agent.moveTo(targetPos, {
+      speed: 0.55,
+      drag: true,
+      tempo: this.tempo,
+      onStep: () => {
+        curPos = axis === 'x' ? agent.position.x : agent.position.y;
+      },
+    });
+
+    // Snap flash!
+    agent.ov = () => [
+      {
+        t: 'guide',
+        axis,
+        pos,
+        flash: 1,
+        opacity: 1,
+      },
+    ];
+    agent.setShape('arrow', this.overlayManager);
+    yield* agent.wait(0.25, this.tempo);
+
+    this.rulersWant--;
+    agent.ov = null;
+  }
+
+  /**
+   * Public API: Replays swarm construction from beginning.
    */
   public replay(): void {
-    if (this.destroyed) return;
+    this.builderEffects.restoreAll();
+    this.completedTaskIds.clear();
+    this.activeTask = null;
+    this.started = false;
+    this.flocking = false;
+    this.constructedCount = 0;
+    this.scrollFrontier = 0;
+    this.isFinishedState = false;
 
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-
-    const intro = document.getElementById('swarmCenterLogo') || document.getElementById('introLogo');
-    if (intro) intro.classList.remove('gone');
-
-    this.activeTasks.forEach((task) => {
-      task.cancelReveal?.();
-      if (task.boxElement) {
-        this.overlayManager.removeBoundingBox(task.boxElement, task.id);
-      }
-    });
-    this.activeTasks.clear();
-    this.completedElements.clear();
+    if (this.introLogoEl) {
+      this.introLogoEl.classList.remove('gone');
+    }
 
     const elements = this.domScanner.scanAndIndex();
-    this.buildQueue = [...elements];
-    this.constructedCount = 0;
-    this.isFinishedState = false;
-    this.hasUserScrolled = false;
-    this.overlayManager.setRulersVisible(false);
+    this.tasks = this.domScanner.buildTaskGraph(elements);
+    this.tasks.forEach((t) => this.taskMap.set(t.id, t));
 
-    this.detectInitialLogoCenter();
-    const center = this.initialLogoCenter || vec(
-      (window.innerWidth || 1024) / 2,
-      (window.innerHeight || 768) / 2
-    );
+    const center = this.initialLogoCenter || {
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+    };
+    const count = this.agents.length;
 
     this.agents.forEach((agent, i) => {
-      const angle = (i / this.agents.length) * Math.PI * 2;
-      const radiusX = 140 + (i % 3) * 20;
-      const radiusY = 95 + (i % 3) * 15;
-      const pos = vec(
-        center.x + Math.cos(angle) * radiusX,
-        center.y + Math.sin(angle) * radiusY
-      );
-      agent.reset(pos, this.overlayManager);
+      const angle = (i / count) * Math.PI * 2;
+      const initialPos = {
+        x: center.x + Math.cos(angle) * 160,
+        y: center.y + Math.sin(angle) * 160,
+      };
+      agent.reset(initialPos, this.overlayManager);
+      agent.follow = true;
     });
+
+    this.overlayManager.setRulersProgress(0);
+    this.overlayManager.clearDynamicOverlays();
   }
 
   /**
-   * Public API: Manually trigger construction on an element immediately.
-   */
-  public async buildElement(element: HTMLElement): Promise<void> {
-    if (this.destroyed) return;
-    return new Promise<void>((resolve) => {
-      const existingHandler = this.config.onElementConstructed;
-      const onDone = (el: HTMLElement) => {
-        if (el === element) resolve();
-      };
-      this.config.onElementConstructed = (el) => {
-        existingHandler?.(el);
-        onDone(el);
-      };
-      this.constructElement(element);
-    });
-  }
-
-  /**
-   * Public API: Pauses simulation.
+   * Public API: Pause simulation.
    */
   public pause(): void {
     this.paused = true;
   }
 
   /**
-   * Public API: Resumes simulation.
+   * Public API: Resume simulation.
    */
   public resume(): void {
-    if (this.paused) {
-      this.paused = false;
-      this.lastTime = performance.now();
-      this.processBuildQueue();
-    }
+    this.paused = false;
   }
 
   /**
-   * Public API: Check if paused.
+   * Public API: Manually trigger construction on a specific element.
    */
-  public isPaused(): boolean {
-    return this.paused;
+  public async buildElement(element: HTMLElement): Promise<void> {
+    const task = this.taskMap.get(element.id) || this.domScanner.buildTaskGraph([element])[0];
+    if (!task) return;
+
+    const agent = this.agents.find((a) => !a.gen && !a.follow) || this.agents[0];
+    if (!agent) return;
+    return new Promise((resolve) => {
+      const gen = this.runTask(agent, task);
+      const runner = () => {
+        const res = gen.next(0.016);
+        if (res.done) {
+          this.completedTaskIds.add(task.id);
+          this.config.onElementConstructed?.(element);
+          resolve();
+        } else {
+          requestAnimationFrame(runner);
+        }
+      };
+      requestAnimationFrame(runner);
+    });
   }
 
-  /**
-   * Public API: Check if finished building all elements.
-   */
-  public isFinished(): boolean {
-    return this.isFinishedState;
-  }
-
-  /**
-   * Public API: Retrieve read-only configuration.
-   */
   public getConfig(): Readonly<ResolvedSwarmConfig> {
     return { ...this.config };
   }
 
-  /**
-   * Public API: Update configuration dynamically.
-   */
   public updateConfig(newConfig: Partial<SwarmConfig>): void {
     this.config = {
       ...this.config,
       ...newConfig,
     };
-
-    if (newConfig.maxSpeed !== undefined || newConfig.maxForce !== undefined) {
-      this.agents.forEach((a) => {
-        if (newConfig.maxSpeed !== undefined) {
-          a.defaultMaxSpeed = newConfig.maxSpeed;
-          a.maxSpeed = newConfig.maxSpeed;
-        }
-        if (newConfig.maxForce !== undefined) {
-          a.defaultMaxForce = newConfig.maxForce;
-          a.maxForce = newConfig.maxForce;
-        }
-      });
-    }
   }
 
-  /**
-   * Public API: Returns total active agent count.
-   */
+  public isPaused(): boolean {
+    return this.paused;
+  }
+
+  public isFinished(): boolean {
+    return this.isFinishedState;
+  }
+
   public getActiveAgentCount(): number {
     return this.agents.filter((a) => a.state !== 'VANISHED').length;
   }
 
-  /**
-   * Public API: Returns diagnostic metrics.
-   */
   public getMetrics(): SwarmMetrics {
     let idle = 0;
     let constructing = 0;
 
-    for (let i = 0; i < this.agents.length; i++) {
-      const a = this.agents[i];
-      if (!a) continue;
-      if (a.state === 'IDLE_FLOCKING' || a.state === 'RETURNING_TO_SWARM') {
-        idle++;
-      } else if (a.state === 'CONSTRUCTING_ELEMENT' || a.state === 'MOVING_TO_TARGET') {
-        constructing++;
-      }
+    for (const a of this.agents) {
+      if (a.gen) constructing++;
+      else idle++;
     }
 
     return {
@@ -1037,16 +1114,16 @@ export class SwarmEngine implements DomSwarmInstance {
       totalAgents: this.agents.length,
       idleAgents: idle,
       constructingAgents: constructing,
-      convergingAgents: 0,
-      vanishedAgents: 0,
+      convergingAgents: this.flocking ? this.agents.length : 0,
+      vanishedAgents: this.agents.filter((a) => a.state === 'VANISHED').length,
       elementsConstructed: this.constructedCount,
-      elementsPending: this.buildQueue.length + this.activeTasks.size,
+      elementsPending: this.tasks.length - this.completedTaskIds.size,
       isFinished: this.isFinishedState,
     };
   }
 
   /**
-   * Complete teardown: restores all native styles, stops RAF loop, unbinds events, removes overlay.
+   * Complete teardown: cleans up listeners, overlay, agents, and styles.
    */
   public destroy(): void {
     if (this.destroyed) return;
@@ -1062,25 +1139,14 @@ export class SwarmEngine implements DomSwarmInstance {
       window.removeEventListener('touchstart', this.onTouchMove);
       window.removeEventListener('touchmove', this.onTouchMove);
       window.removeEventListener('scroll', this.onScroll);
+      window.removeEventListener('wheel', this.onWheel);
       window.removeEventListener('resize', this.onResize);
     }
 
     this.domScanner.destroy();
-
-    this.activeTasks.forEach((task) => {
-      task.cancelReveal?.();
-      if (task.boxElement) {
-        this.overlayManager.removeBoundingBox(task.boxElement, task.id);
-      }
-    });
-    this.activeTasks.clear();
-    this.buildQueue = [];
-    this.completedElements.clear();
-
-    this.agents.forEach((agent) => agent.destroy());
-    this.agents = [];
-
     this.builderEffects.restoreAll();
     this.overlayManager.destroy();
+    this.agents.forEach((a) => a.destroy());
+    this.agents = [];
   }
 }

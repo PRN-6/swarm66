@@ -1,4 +1,4 @@
-import { AgentType, BoundingBoxType } from '../types';
+import { AgentType, CursorShape, OverlayItem } from '../types';
 
 export interface BoxRect {
   left: number;
@@ -16,16 +16,30 @@ export interface ActiveRulerSegment {
   height: number;
 }
 
+const OP_HOTSPOTS: Record<CursorShape, [number, number]> = {
+  arrow: [5, 3.5],
+  dup: [5, 3.5],
+  pen: [3, 3],
+  'pen-add': [3, 3],
+  'pen-close': [3, 3],
+  cross: [12, 12],
+  ibeam: [12, 12],
+  ew: [12, 12],
+  ns: [12, 12],
+};
+
+const PI_ARROW =
+  'M4.6 3.9 C4.2 3.1 4.9 2.4 5.7 2.8 L20.6 9.4 C21.5 9.8 21.4 11.1 20.4 11.3 L13.9 12.9 C13.4 13 13 13.4 12.9 13.9 L11.3 20.4 C11.1 21.4 9.8 21.5 9.4 20.6 Z';
+
 /**
  * Manages the open Shadow DOM overlay container, Figma rulers,
  * full-screen red & cyan alignment guide lines, SVG cursors, and selection bounding boxes.
  */
 export class OverlayManager {
   private hostElement: HTMLElement | null = null;
-  private shadowRoot: ShadowRoot | null = null;
   private agentsLayer: HTMLElement | null = null;
-  private overlaysLayer: HTMLElement | null = null;
-  private guidesLayer: HTMLElement | null = null;
+  private svgLayer: SVGSVGElement | null = null;
+  private badgesLayer: HTMLElement | null = null;
   private rulersContainer: HTMLElement | null = null;
   private topRulerSegmentsEl: HTMLElement | null = null;
   private leftRulerSegmentsEl: HTMLElement | null = null;
@@ -74,9 +88,23 @@ export class OverlayManager {
     guides.className = 'swarm-guides-layer';
     wrapper.appendChild(guides);
 
-    // 3. Bounding boxes layer
+    // 3. Dynamic SVG overlays layer
     const overlays = document.createElement('div');
     overlays.className = 'swarm-overlays-layer';
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'swarm-svg-canvas');
+    svg.style.position = 'absolute';
+    svg.style.inset = '0';
+    svg.style.width = '100%';
+    svg.style.height = '100%';
+    svg.style.overflow = 'visible';
+    overlays.appendChild(svg);
+
+    const badges = document.createElement('div');
+    badges.className = 'swarm-badges-layer';
+    overlays.appendChild(badges);
+
     wrapper.appendChild(overlays);
 
     // 4. Agents cursor layer (top)
@@ -91,9 +119,8 @@ export class OverlayManager {
     targetParent.appendChild(host);
 
     this.hostElement = host;
-    this.shadowRoot = shadow;
-    this.guidesLayer = guides;
-    this.overlaysLayer = overlays;
+    this.svgLayer = svg;
+    this.badgesLayer = badges;
     this.agentsLayer = agents;
     this.mounted = true;
 
@@ -143,7 +170,7 @@ export class OverlayManager {
    */
   private generateTopRulerTicks(): string {
     let html = '';
-    for (let x = -100; x <= 2400; x += 100) {
+    for (let x = -100; x <= 2500; x += 100) {
       html += `<div class="swarm-ruler-tick-num" style="left: ${x + 100}px;">${x}</div>`;
       for (let sub = 10; sub < 100; sub += 10) {
         const height = sub === 50 ? 7 : 4;
@@ -158,7 +185,7 @@ export class OverlayManager {
    */
   private generateLeftRulerTicks(): string {
     let html = '';
-    for (let y = 0; y <= 2400; y += 100) {
+    for (let y = 0; y <= 3500; y += 100) {
       html += `<div class="swarm-ruler-tick-num-v" style="top: ${y}px;">${y}</div>`;
       for (let sub = 10; sub < 100; sub += 10) {
         const width = sub === 50 ? 7 : 4;
@@ -179,6 +206,20 @@ export class OverlayManager {
         this.rulersContainer.classList.remove('visible');
       }
     }
+  }
+
+  /**
+   * Slides rulers smoothly between hidden (0) and fully visible (1).
+   */
+  public setRulersProgress(progress: number): void {
+    if (!this.rulersContainer) return;
+    const top = this.rulersContainer.querySelector<HTMLElement>('.swarm-ruler-top');
+    const left = this.rulersContainer.querySelector<HTMLElement>('.swarm-ruler-left');
+    const corner = this.rulersContainer.querySelector<HTMLElement>('.swarm-ruler-corner');
+
+    if (top) top.style.transform = `translateY(${(progress - 1) * 100}%)`;
+    if (left) left.style.transform = `translateX(${(progress - 1) * 100}%)`;
+    if (corner) corner.style.opacity = progress.toFixed(3);
   }
 
   /**
@@ -221,7 +262,7 @@ export class OverlayManager {
     // Inner icon container
     const iconContainer = document.createElement('div');
     iconContainer.className = 'swarm-agent-icon';
-    iconContainer.innerHTML = this.getPointerSvg(color);
+    iconContainer.innerHTML = this.getCursorSvg('arrow', color);
 
     agentEl.appendChild(iconContainer);
 
@@ -240,240 +281,234 @@ export class OverlayManager {
   }
 
   /**
-   * Updates hardware-accelerated transform of an agent cursor.
-   * Keeps arrow cursor upright with hotspot tip at (4, 3) like Figma.
+   * Updates hardware-accelerated transform of an agent cursor with exact hot-spot pivot,
+   * heading rotation, and click press compression.
    */
   public updateAgentTransform(
     el: HTMLElement,
     x: number,
     y: number,
-    _angleDeg: number,
-    scale = 1
+    angleDeg: number,
+    scale = 1,
+    shape: CursorShape = 'arrow',
+    press = 0
   ): void {
-    const isIBeam = el.querySelector('.is-ibeam') !== null;
-    const isCross = el.querySelector('.is-crosshair') !== null;
-    const offsetX = isIBeam || isCross ? 11 : 4;
-    const offsetY = isIBeam || isCross ? 11 : 3;
+    const [hotspotX, hotspotY] = OP_HOTSPOTS[shape] || [5, 3.5];
+    const pressScale = 1 - Math.min(Math.max(press, 0), 1) * 0.12;
+    const finalScale = scale * pressScale;
 
-    el.style.transform = `translate3d(${(x - offsetX).toFixed(1)}px, ${(y - offsetY).toFixed(1)}px, 0) scale(${scale.toFixed(3)})`;
+    el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
+
+    const svg = el.querySelector<SVGSVGElement>('svg');
+    if (svg) {
+      svg.style.transform = `translate(${-hotspotX}px, ${-hotspotY}px) rotate(${angleDeg.toFixed(1)}deg) scale(${finalScale.toFixed(3)})`;
+      svg.style.transformOrigin = `${hotspotX}px ${hotspotY}px`;
+    }
   }
 
   /**
-   * Changes agent cursor appearance (pointer, ibeam, or crosshair).
+   * Sets cursor shape using Figma SVG definitions.
    */
-  public setAgentType(iconContainer: HTMLElement, type: AgentType, color: string): void {
-    if (type === 'ibeam') {
-      iconContainer.innerHTML = this.getIBeamSvg(color);
+  public setCursorShape(iconContainer: HTMLElement, shape: CursorShape, color: string): void {
+    iconContainer.innerHTML = this.getCursorSvg(shape, color);
+    if (shape === 'ibeam') {
       iconContainer.classList.add('is-ibeam');
-      iconContainer.classList.remove('is-crosshair');
-    } else if (type === 'crosshair') {
-      iconContainer.innerHTML = this.getCrosshairSvg(color);
-      iconContainer.classList.add('is-crosshair');
-      iconContainer.classList.remove('is-ibeam');
     } else {
-      iconContainer.innerHTML = this.getPointerSvg(color);
-      iconContainer.classList.remove('is-ibeam', 'is-crosshair');
+      iconContainer.classList.remove('is-ibeam');
     }
   }
 
   /**
    * Compatibility alias for setAgentType.
    */
+  public setAgentType(iconContainer: HTMLElement, type: AgentType, color: string): void {
+    const shape: CursorShape = type === 'ibeam' ? 'ibeam' : type === 'crosshair' ? 'cross' : 'arrow';
+    this.setCursorShape(iconContainer, shape, color);
+  }
+
   public setAgentIcon(iconContainer: HTMLElement, type: AgentType, color: string): void {
     this.setAgentType(iconContainer, type, color);
   }
 
   /**
-   * Creates a bold, crisp Figma selection bounding box overlay with 8 resize handles.
+   * Generates exact Figma SVG for all cursor tools.
    */
-  public createBoundingBox(
-    id: string,
-    rect: BoxRect,
-    type: BoundingBoxType,
-    showDimensions = true,
-    showGuides = true
-  ): HTMLElement {
-    if (!this.overlaysLayer) {
-      throw new Error('[dom-swarm] OverlayManager is not mounted.');
+  public getCursorSvg(shape: CursorShape, color: string): string {
+    const common = 'stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"';
+    let content = '';
+
+    switch (shape) {
+      case 'arrow':
+        content = `<path d="${PI_ARROW}" fill="${color}" ${common}/>`;
+        break;
+      case 'dup':
+        content = `
+          <path d="${PI_ARROW}" transform="translate(4 3.5)" fill="#ffffff" stroke="${color}" stroke-width="1.3" stroke-linejoin="round"/>
+          <path d="${PI_ARROW}" fill="${color}" ${common}/>
+        `;
+        break;
+      case 'pen':
+      case 'pen-add':
+      case 'pen-close': {
+        let badge = '';
+        if (shape === 'pen-add') {
+          badge = `
+            <g stroke-linecap="round">
+              <path d="M23 19.5 V26.5 M19.5 23 H26.5" stroke="#ffffff" stroke-width="3.4"/>
+              <path d="M23 19.5 V26.5 M19.5 23 H26.5" stroke="#1E1E1E" stroke-width="1.3"/>
+            </g>
+          `;
+        } else if (shape === 'pen-close') {
+          badge = `
+            <circle cx="23" cy="23" r="2.8" fill="none" stroke="#ffffff" stroke-width="3.2"/>
+            <circle cx="23" cy="23" r="2.8" fill="none" stroke="#1E1E1E" stroke-width="1.2"/>
+          `;
+        }
+        content = `
+          <path d="M17.4 10.6 L20.6 13.8 L13.8 20.6 L10.6 17.4 Z" fill="${color}" ${common}/>
+          <path d="M3 3 L13.1 6.3 L17.4 10.6 L10.6 17.4 L6.3 13.1 Z" fill="${color}" ${common}/>
+          <path d="M3.6 3.6 L8.9 8.9" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round"/>
+          <circle cx="10.2" cy="10.2" r="1.75" fill="none" stroke="#ffffff" stroke-width="1.2"/>
+          ${badge}
+        `;
+        break;
+      }
+      case 'cross':
+        content = `
+          <g stroke-linecap="round">
+            <path d="M12 3.5 V20.5 M3.5 12 H20.5" stroke="#ffffff" stroke-width="3.6"/>
+            <path d="M12 3.5 V20.5 M3.5 12 H20.5" stroke="${color}" stroke-width="1.5"/>
+          </g>
+        `;
+        break;
+      case 'ibeam': {
+        const d =
+          'M8.5 4.5 H10.5 Q12 4.5 12 6 Q12 4.5 13.5 4.5 H15.5 M12 6 V18 M8.5 19.5 H10.5 Q12 19.5 12 18 Q12 19.5 13.5 19.5 H15.5';
+        content = `
+          <g fill="none" stroke-linecap="round">
+            <path d="${d}" stroke="#ffffff" stroke-width="3.6"/>
+            <path d="${d}" stroke="${color}" stroke-width="1.5"/>
+          </g>
+        `;
+        break;
+      }
+      case 'ew':
+      case 'ns':
+        content = `<path d="M2.5 12 L7 7.5 V10.4 H17 V7.5 L21.5 12 L17 16.5 V13.6 H7 V16.5 Z" ${
+          shape === 'ns' ? 'transform="rotate(90 12 12)"' : ''
+        } fill="${color}" ${common}/>`;
+        break;
     }
 
-    const box = document.createElement('div');
-    box.className = `swarm-bounding-box box-${type}`;
-    box.id = `swarm-box-${id}`;
-
-    // Apply geometry
-    box.style.transform = `translate3d(${rect.left}px, ${rect.top}px, 0)`;
-    box.style.width = `${Math.max(6, rect.width)}px`;
-    box.style.height = `${Math.max(6, rect.height)}px`;
-
-    // 8 Figma Resize Handles (4 corners + 4 midpoints)
-    const handles = ['tl', 'tr', 'bl', 'br', 'mt', 'mb', 'ml', 'mr'];
-    handles.forEach((h) => {
-      const handle = document.createElement('div');
-      handle.className = `swarm-corner-handle handle-${h}`;
-      box.appendChild(handle);
-    });
-
-    // Dimension badge (e.g., "580 × 130")
-    if (showDimensions) {
-      const badge = document.createElement('div');
-      badge.className = 'swarm-dimension-badge';
-      badge.textContent = `${Math.round(rect.width)} × ${Math.round(rect.height)}`;
-      box.appendChild(badge);
-    }
-
-    // Full-screen alignment guidelines & crosshairs
-    if (showGuides && this.guidesLayer) {
-      this.createAlignmentGuides(id, rect);
-    }
-
-    this.overlaysLayer.appendChild(box);
-    return box;
+    return `<svg width="28" height="28" viewBox="0 0 28 28" fill="none" class="swarm-cursor-svg" style="overflow: visible; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,0.28));">${content}</svg>`;
   }
 
   /**
-   * Creates full-screen red alignment guide lines and cyan dashed layout lines with crosshairs.
+   * Renders dynamic overlays (selection boxes, handles, badges, guidelines, ruler lines, measurement lines).
    */
-  private createAlignmentGuides(id: string, rect: BoxRect): void {
-    if (!this.guidesLayer) return;
+  public renderDynamicOverlays(items: OverlayItem[], rulerT = 0): void {
+    if (!this.svgLayer || !this.badgesLayer) return;
 
-    const right = rect.right !== undefined ? rect.right : rect.left + rect.width;
-    const bottom = rect.bottom !== undefined ? rect.bottom : rect.top + rect.height;
+    let svgHtml = '';
+    let badgesHtml = '';
 
-    const guidesContainer = document.createElement('div');
-    guidesContainer.className = 'swarm-guides-group';
-    guidesContainer.id = `swarm-guides-${id}`;
+    for (const item of items) {
+      if (item.t === 'box') {
+        const strokeColor = item.color === 'red' ? '#F24822' : '#0D99FF';
+        const b = item.b;
 
-    // Full-screen solid red vertical guideline at left margin
-    const redV = document.createElement('div');
-    redV.className = 'swarm-guide swarm-guide-red-v';
-    redV.style.left = `${rect.left}px`;
+        // Bounding Box
+        svgHtml += `<rect x="${b.left}" y="${b.top}" width="${b.width}" height="${b.height}" fill="none" stroke="${strokeColor}" stroke-width="1.5"/>`;
 
-    // Horizontal cyan dashed line at top
-    const hTop = document.createElement('div');
-    hTop.className = 'swarm-guide swarm-guide-cyan-h';
-    hTop.style.top = `${rect.top}px`;
-
-    // Horizontal cyan dashed line at bottom
-    const hBottom = document.createElement('div');
-    hBottom.className = 'swarm-guide swarm-guide-cyan-h';
-    hBottom.style.top = `${bottom}px`;
-
-    // Vertical cyan dashed line at right
-    const vRight = document.createElement('div');
-    vRight.className = 'swarm-guide swarm-guide-cyan-v';
-    vRight.style.left = `${right}px`;
-
-    // Crosshair markers at corners
-    const cross1 = document.createElement('div');
-    cross1.className = 'swarm-crosshair crosshair-tl';
-    cross1.textContent = '+';
-    cross1.style.left = `${rect.left}px`;
-    cross1.style.top = `${rect.top}px`;
-
-    const cross2 = document.createElement('div');
-    cross2.className = 'swarm-crosshair crosshair-br';
-    cross2.textContent = '+';
-    cross2.style.left = `${right}px`;
-    cross2.style.top = `${bottom}px`;
-
-    guidesContainer.appendChild(redV);
-    guidesContainer.appendChild(hTop);
-    guidesContainer.appendChild(hBottom);
-    guidesContainer.appendChild(vRight);
-    guidesContainer.appendChild(cross1);
-    guidesContainer.appendChild(cross2);
-
-    this.guidesLayer.appendChild(guidesContainer);
-  }
-
-  /**
-   * Updates coordinates of an existing bounding box and its alignment guides during scrolling/resizing.
-   */
-  public updateBoundingBox(boxEl: HTMLElement, rect: BoxRect, id?: string): void {
-    boxEl.style.transform = `translate3d(${rect.left}px, ${rect.top}px, 0)`;
-    boxEl.style.width = `${Math.max(6, rect.width)}px`;
-    boxEl.style.height = `${Math.max(6, rect.height)}px`;
-
-    const dimBadge = boxEl.querySelector('.swarm-dimension-badge');
-    if (dimBadge) {
-      dimBadge.textContent = `${Math.round(rect.width)} × ${Math.round(rect.height)}`;
-    }
-
-    if (id && this.guidesLayer && this.shadowRoot) {
-      const guidesGroup = this.shadowRoot.getElementById(`swarm-guides-${id}`);
-      if (guidesGroup) {
-        const right = rect.right !== undefined ? rect.right : rect.left + rect.width;
-        const bottom = rect.bottom !== undefined ? rect.bottom : rect.top + rect.height;
-
-        const redV = guidesGroup.querySelector<HTMLElement>('.swarm-guide-red-v');
-        if (redV) redV.style.left = `${rect.left}px`;
-
-        const hCyan = guidesGroup.querySelectorAll<HTMLElement>('.swarm-guide-cyan-h');
-        if (hCyan[0]) hCyan[0].style.top = `${rect.top}px`;
-        if (hCyan[1]) hCyan[1].style.top = `${bottom}px`;
-
-        const vCyan = guidesGroup.querySelector<HTMLElement>('.swarm-guide-cyan-v');
-        if (vCyan) vCyan.style.left = `${right}px`;
-
-        const cross1 = guidesGroup.querySelector<HTMLElement>('.crosshair-tl');
-        if (cross1) {
-          cross1.style.left = `${rect.left}px`;
-          cross1.style.top = `${rect.top}px`;
+        // Underline
+        if (item.underline && item.underline.width > 0) {
+          const u = item.underline;
+          svgHtml += `<line x1="${u.left}" x2="${u.left + u.width}" y1="${u.top}" y2="${u.top}" stroke="${strokeColor}" stroke-width="1.5"/>`;
         }
 
-        const cross2 = guidesGroup.querySelector<HTMLElement>('.crosshair-br');
-        if (cross2) {
-          cross2.style.left = `${right}px`;
-          cross2.style.top = `${bottom}px`;
+        // Projection lines to top/left rulers
+        if (item.rulerLines && rulerT > 0.05) {
+          svgHtml += `
+            <g stroke="${strokeColor}" stroke-width="1" stroke-dasharray="2 2" opacity="${rulerT}">
+              <line x1="20" x2="${b.left}" y1="${b.top + b.height / 2}" y2="${b.top + b.height / 2}"/>
+              <line x1="${b.left + b.width / 2}" x2="${b.left + b.width / 2}" y1="20" y2="${b.top}"/>
+            </g>
+          `;
+        }
+
+        // 4 white corner handles (7px × 7px)
+        if (item.handles && b.width > 12 && b.height > 12) {
+          const corners = [
+            [b.left, b.top],
+            [b.left + b.width, b.top],
+            [b.left, b.top + b.height],
+            [b.left + b.width, b.top + b.height],
+          ];
+          for (const corner of corners) {
+            if (!corner) continue;
+            const [cx, cy] = corner;
+            if (cx !== undefined && cy !== undefined) {
+              svgHtml += `<rect x="${cx - 3.5}" y="${cy - 3.5}" width="7" height="7" fill="#ffffff" stroke="${strokeColor}" stroke-width="1"/>`;
+            }
+          }
+        }
+
+        // Dimension badge
+        if (item.badge && b.width > 0) {
+          badgesHtml += `
+            <div class="swarm-dimension-badge" style="left: ${b.left + b.width / 2}px; top: ${
+            b.top + b.height + 8
+          }px; background: ${strokeColor};">
+              ${item.badge}
+            </div>
+          `;
+        }
+      } else if (item.t === 'measure') {
+        const { a, b, label } = item;
+        svgHtml += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#F24822" stroke-width="1.2"/>`;
+        const midX = (a.x + b.x) / 2;
+        const midY = (a.y + b.y) / 2;
+        badgesHtml += `
+          <div class="swarm-dimension-badge" style="left: ${midX}px; top: ${midY - 9}px; background: #F24822;">
+            ${label}
+          </div>
+        `;
+      } else if (item.t === 'guide') {
+        const strokeW = 1 + (item.flash || 0);
+        const filter = item.flash ? `drop-shadow(0 0 ${2 + item.flash * 3}px #F24822)` : '';
+        const op = item.opacity !== undefined ? item.opacity : 1;
+
+        if (item.axis === 'x') {
+          svgHtml += `<line x1="${item.pos}" x2="${item.pos}" y1="0" y2="10000" stroke="#F24822" stroke-width="${strokeW}" opacity="${op}" style="filter: ${filter};"/>`;
+        } else {
+          svgHtml += `<line x1="0" x2="10000" y1="${item.pos}" y2="${item.pos}" stroke="#F24822" stroke-width="${strokeW}" opacity="${op}" style="filter: ${filter};"/>`;
+        }
+      } else if (item.t === 'path') {
+        const pts = item.points;
+        if (pts.length > 0) {
+          const allPts = item.cursorPos ? [...pts, item.cursorPos] : pts;
+          const p0 = pts[0];
+          const closedStr = item.closed && p0 ? ` ${p0.x},${p0.y}` : '';
+          const pointsStr = allPts.map((p) => `${p.x},${p.y}`).join(' ') + closedStr;
+          svgHtml += `<polyline points="${pointsStr}" fill="none" stroke="#0D99FF" stroke-width="1.5"/>`;
+
+          for (const p of pts) {
+            svgHtml += `<circle cx="${p.x}" cy="${p.y}" r="3.6" fill="#ffffff" stroke="#0D99FF" stroke-width="1.5"/>`;
+          }
         }
       }
     }
+
+    this.svgLayer.innerHTML = svgHtml;
+    this.badgesLayer.innerHTML = badgesHtml;
   }
 
   /**
-   * Removes a bounding box overlay and any attached guide lines.
+   * Clears dynamic SVG and HTML badge layers.
    */
-  public removeBoundingBox(boxEl: HTMLElement, id?: string): void {
-    if (boxEl.parentNode) {
-      boxEl.parentNode.removeChild(boxEl);
-    }
-    if (id && this.shadowRoot) {
-      const guides = this.shadowRoot.getElementById(`swarm-guides-${id}`);
-      if (guides && guides.parentNode) {
-        guides.parentNode.removeChild(guides);
-      }
-    }
-  }
-
-  /**
-   * Figma-exact pointer arrow SVG.
-   */
-  private getPointerSvg(color: string): string {
-    return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M4.6 3.9 C4.2 3.1 4.9 2.4 5.7 2.8 L20.6 9.4 C21.5 9.8 21.4 11.1 20.4 11.3 L13.9 12.9 C13.4 13 13 13.4 12.9 13.9 L11.3 20.4 C11.1 21.4 9.8 21.5 9.4 20.6 Z" fill="${color}" stroke="#FFFFFF" stroke-width="1.5" stroke-linejoin="round"/>
-    </svg>`;
-  }
-
-  /**
-   * Figma I-Beam text SVG icon string.
-   */
-  private getIBeamSvg(color: string): string {
-    const d = "M8.5 4.5 H10.5 Q12 4.5 12 6 Q12 4.5 13.5 4.5 H15.5 M12 6 V18 M8.5 19.5 H10.5 Q12 19.5 12 18 Q12 19.5 13.5 19.5 H15.5";
-    return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="${d}" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round"/>
-      <path d="${d}" stroke="${color}" stroke-width="1.6" stroke-linecap="round"/>
-    </svg>`;
-  }
-
-  /**
-   * Figma Crosshair (+) SVG icon string.
-   */
-  private getCrosshairSvg(color: string): string {
-    return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M12 3.5 V20.5 M3.5 12 H20.5" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round"/>
-      <path d="M12 3.5 V20.5 M3.5 12 H20.5" stroke="${color}" stroke-width="1.6" stroke-linecap="round"/>
-    </svg>`;
+  public clearDynamicOverlays(): void {
+    if (this.svgLayer) this.svgLayer.innerHTML = '';
+    if (this.badgesLayer) this.badgesLayer.innerHTML = '';
   }
 
   /**
@@ -632,7 +667,7 @@ export class OverlayManager {
         writing-mode: vertical-lr;
       }
 
-      /* Guide Lines & Wireframes */
+      /* Layers */
       .swarm-guides-layer {
         position: absolute;
         inset: 0;
@@ -645,49 +680,16 @@ export class OverlayManager {
         z-index: 20;
         pointer-events: none;
       }
+      .swarm-badges-layer {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
       .swarm-agents-layer {
         position: absolute;
         inset: 0;
         z-index: 30;
         pointer-events: none;
-      }
-
-      .swarm-guide {
-        position: absolute;
-        pointer-events: none;
-      }
-      .swarm-guide-red-v {
-        top: 0;
-        bottom: 0;
-        height: 100vh;
-        width: 1px;
-        background: #f24822;
-        opacity: 0.85;
-      }
-      .swarm-guide-cyan-h {
-        left: 0;
-        right: 0;
-        width: 100vw;
-        height: 1px;
-        background: transparent;
-        border-top: 1px dashed rgba(13, 153, 255, 0.5);
-      }
-      .swarm-guide-cyan-v {
-        top: 0;
-        bottom: 0;
-        height: 100vh;
-        width: 1px;
-        background: transparent;
-        border-left: 1px dashed rgba(13, 153, 255, 0.5);
-      }
-      .swarm-crosshair {
-        position: absolute;
-        transform: translate(-50%, -50%);
-        font-size: 13px;
-        font-weight: 600;
-        color: #0d99ff;
-        pointer-events: none;
-        line-height: 1;
       }
 
       /* Cursors */
@@ -697,7 +699,6 @@ export class OverlayManager {
         left: 0;
         pointer-events: none;
         will-change: transform;
-        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
         transition: opacity 0.15s ease;
       }
       .swarm-agent-icon {
@@ -726,66 +727,20 @@ export class OverlayManager {
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
       }
 
-      /* Figma Selection & Wireframe Bounding Boxes */
-      .swarm-bounding-box {
-        position: absolute;
-        top: 0;
-        left: 0;
-        pointer-events: none;
-        will-change: transform, width, height;
-        box-sizing: border-box;
-      }
-      .box-blue {
-        border: 1.5px solid #0d99ff;
-        background: rgba(13, 153, 255, 0.035);
-      }
-      .box-red {
-        border: 1.5px solid #f24822;
-        background: rgba(242, 72, 34, 0.035);
-      }
-
-      /* 8 Figma Handles (7px × 7px white squares with box-colored 1px border) */
-      .swarm-corner-handle {
-        position: absolute;
-        width: 7px;
-        height: 7px;
-        background: #ffffff;
-        border: 1px solid #0d99ff;
-        border-radius: 1px;
-        box-sizing: border-box;
-      }
-      .box-red .swarm-corner-handle {
-        border-color: #f24822;
-      }
-      .handle-tl { top: -3.5px; left: -3.5px; }
-      .handle-tr { top: -3.5px; right: -3.5px; }
-      .handle-bl { bottom: -3.5px; left: -3.5px; }
-      .handle-br { bottom: -3.5px; right: -3.5px; }
-      .handle-mt { top: -3.5px; left: calc(50% - 3.5px); }
-      .handle-mb { bottom: -3.5px; left: calc(50% - 3.5px); }
-      .handle-ml { left: -3.5px; top: calc(50% - 3.5px); }
-      .handle-mr { right: -3.5px; top: calc(50% - 3.5px); }
-
-      /* Figma Dimension Pill Badge */
+      /* Dimension & Measurement Badges */
       .swarm-dimension-badge {
         position: absolute;
-        left: 50%;
-        top: calc(100% + 8px);
         transform: translateX(-50%);
-        background: #0d99ff;
         color: #ffffff;
         font-family: Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
         font-size: 11px;
         line-height: 16px;
         font-weight: 600;
         font-variant-numeric: tabular-nums;
-        padding: 1px 5px;
+        padding: 1px 4px;
         border-radius: 2px;
         white-space: nowrap;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
-      }
-      .box-red .swarm-dimension-badge {
-        background: #f24822;
       }
     `;
   }
@@ -798,10 +753,9 @@ export class OverlayManager {
       this.hostElement.parentNode.removeChild(this.hostElement);
     }
     this.hostElement = null;
-    this.shadowRoot = null;
     this.agentsLayer = null;
-    this.overlaysLayer = null;
-    this.guidesLayer = null;
+    this.svgLayer = null;
+    this.badgesLayer = null;
     this.rulersContainer = null;
     this.topRulerSegmentsEl = null;
     this.leftRulerSegmentsEl = null;

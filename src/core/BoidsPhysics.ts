@@ -85,6 +85,123 @@ export class BoidsPhysics {
   }
 
   /**
+   * Reference flocking and mouse follow physics:
+   * Smooth orbital breathing, tangential velocity, dynamic neighbor separation,
+   * 48px repulsion bubble around mouse pointer, and velocity rotation alignment.
+   */
+  public static follow(
+    dt: number,
+    cursors: Agent[],
+    focal: Vector2D,
+    mouse: Vector2D | null,
+    mouseVelocity: Vector2D,
+    time: number,
+    scale = 1
+  ): boolean {
+    const u = 135 * scale * (1 + 0.18 * Math.sin(time * 0.55));
+    const a = Math.tanh(Math.cos(time * 0.11) * 3);
+    const p: [number, number][] = [];
+
+    for (const h of cursors) {
+      const v = h.position.x - focal.x;
+      const w = h.position.y - focal.y;
+      const T = Math.hypot(v, w) || 0.01;
+      const d = v / T;
+      const f = w / T;
+      const y = Math.atan2(w, v);
+      const g = (h.orbit - 120) * 0.55 * scale;
+      const E = u * (1 + 0.3 * Math.sin(3 * y + time * 0.7)) + g;
+      const L = 300 * (0.7 + h.spin * 0.2) * a;
+      const M = Math.max(-2600, Math.min(1400, (E - T) * 4));
+      const S = Math.min(1, Math.max(0, (T - E) / 600));
+      p.push([-f * L + d * M - f * h.curl * 400 * S, d * L + f * M + d * h.curl * 400 * S]);
+    }
+
+    for (let i = 0; i < cursors.length; i++) {
+      const v = cursors[i];
+      if (!v) continue;
+      let w = 0;
+      let T = 0;
+      let d = 0;
+      for (let j = 0; j < cursors.length; j++) {
+        if (i === j) continue;
+        const other = cursors[j];
+        if (!other) continue;
+        const dist = Math.hypot(other.position.x - v.position.x, other.position.y - v.position.y);
+        if (dist > 90) continue;
+        const X = 1 - dist / 90;
+        w += other.velocity.x * X;
+        T += other.velocity.y * X;
+        d += X;
+      }
+      const pItem = p[i];
+      if (!pItem) continue;
+      let [f, y] = pItem;
+      if (d > 0) {
+        f = f * 0.7 + (w / d) * 0.3;
+        y = y * 0.7 + (T / d) * 0.3;
+      }
+      const g = Math.max(0, Math.hypot(v.position.x - focal.x, v.position.y - focal.y) - 180 * scale);
+      const E = v.speed * (1.3 + Math.min(3.2, g / 90));
+      const N = Math.hypot(f, y);
+      if (N > E) {
+        f *= E / N;
+        y *= E / N;
+      }
+      let L = (f - v.velocity.x) * 6;
+      let M = (y - v.velocity.y) * 6;
+      const S = v.force * (1.4 + Math.min(5, g / 50));
+      const C = Math.hypot(L, M);
+      if (C > S) {
+        L *= S / C;
+        M *= S / C;
+      }
+      v.velocity.x += L * dt;
+      v.velocity.y += M * dt;
+      v.position.x += v.velocity.x * dt;
+      v.position.y += v.velocity.y * dt;
+    }
+
+    // 48px repulsion bubble around mouse
+    const m = 48;
+    let near = false;
+    if (mouse) {
+      for (const h of cursors) {
+        const v = h.position.x - mouse.x;
+        const w = h.position.y - mouse.y;
+        const T = Math.hypot(v, w) || 0.01;
+        if (T < m) {
+          near = true;
+          const d = v / T;
+          const f = w / T;
+          h.position.x = mouse.x + d * m;
+          h.position.y = mouse.y + f * m;
+          const y = (h.velocity.x - mouseVelocity.x) * d + (h.velocity.y - mouseVelocity.y) * f;
+          if (y < 0) {
+            h.velocity.x -= d * y * 1.6;
+            h.velocity.y -= f * y * 1.6;
+          }
+          h.velocity.x += d * 260;
+          h.velocity.y += f * 260;
+        }
+      }
+    }
+
+    // Heading rotation alignment
+    for (const h of cursors) {
+      const v = h.velocity.x;
+      const w = h.velocity.y;
+      if (Math.hypot(v, w) > 30) {
+        const d = (((Math.atan2(w, v) * 180) / Math.PI + 128 - h.angle + 540) % 360) - 180;
+        h.angle += d * Math.min(1, dt * 8);
+      }
+      h.press = Math.max(0, h.press - dt * 6);
+    }
+
+    return near;
+  }
+
+  /**
    * Separation: steer to avoid colliding with nearby flockmates.
    */
   public static separate(agent: Agent, agents: Agent[], desiredSeparation: number): Vector2D {

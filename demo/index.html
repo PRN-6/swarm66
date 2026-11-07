@@ -685,7 +685,8 @@
   <script>
     let swarm = null;
 
-    window.addEventListener('DOMContentLoaded', () => {
+    function initSwarm() {
+      if (window.swarm) return;
       if (typeof DomSwarm !== 'undefined' && DomSwarm.enableSwarm) {
         swarm = DomSwarm.enableSwarm({
           agentCount: 36,
@@ -703,10 +704,19 @@
         window.swarm = swarm;
       }
 
-      document.getElementById('btnReplay').addEventListener('click', () => {
-        swarm?.replay();
-      });
-    });
+      const replayBtn = document.getElementById('btnReplay');
+      if (replayBtn) {
+        replayBtn.addEventListener('click', () => {
+          swarm?.replay();
+        });
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      window.addEventListener('DOMContentLoaded', initSwarm);
+    } else {
+      initSwarm();
+    }
   </script>
 </body>
 </html>
