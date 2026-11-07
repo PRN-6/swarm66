@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { enableSwarm, DomSwarm, DomSwarmInstance } from '../src/index';
+import { enableSwarm, DomSwarm, Swarm66, swarm66, DomSwarmInstance } from '../src/index';
 
 describe('Universal Framework & Web Language Compatibility', () => {
   it('supports React & Next.js lifecycle pattern (useEffect mount and cleanup)', () => {
@@ -104,13 +104,15 @@ describe('Universal Framework & Web Language Compatibility', () => {
   it('supports Vanilla HTML, PHP (Laravel / WordPress / Symfony) and Django via global window', () => {
     // In browser global environment
     expect(typeof enableSwarm).toBe('function');
+    expect(typeof swarm66).toBe('function');
     expect(typeof DomSwarm).toBe('function');
+    expect(typeof Swarm66).toBe('function');
 
-    const instance1 = enableSwarm({ agentCount: 12 });
+    const instance1 = swarm66({ agentCount: 12 });
     expect(instance1).toBeDefined();
     instance1.destroy();
 
-    const instance2 = new DomSwarm({ agentCount: 8 });
+    const instance2 = new Swarm66({ agentCount: 8 });
     expect(instance2).toBeDefined();
     instance2.destroy();
   });

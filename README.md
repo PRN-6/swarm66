@@ -1,19 +1,19 @@
-# dom-swarm ⚡
+# swarm66 ⚡
 
 > **Universal plug-and-play visual engine that reverse-engineers any webpage's DOM on the fly. When initialized on ANY website, the page begins blank with its natural background, autonomous AI/Figma-style cursors swarm in to construct the webpage live before the user's eyes, and once the entire page is built, every cursor converges into the user's cursor and vanishes.**
 
-[![npm version](https://img.shields.io/npm/v/dom-swarm.svg?style=flat-square&color=0d99ff)](https://www.npmjs.com/package/dom-swarm)
+[![npm version](https://img.shields.io/npm/v/swarm66.svg?style=flat-square&color=0d99ff)](https://www.npmjs.com/package/swarm66)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict%205.7-blue.svg?style=flat-square)](https://www.typescriptlang.org/)
-[![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-success.svg?style=flat-square)](https://bundlephobia.com/package/dom-swarm)
-[![Bundle Size](https://img.shields.io/badge/Minified%20Bundle-~31KB-informational.svg?style=flat-square)](https://bundlephobia.com/package/dom-swarm)
+[![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-success.svg?style=flat-square)](https://bundlephobia.com/package/swarm66)
+[![Bundle Size](https://img.shields.io/badge/Minified%20Bundle-~31KB-informational.svg?style=flat-square)](https://bundlephobia.com/package/swarm66)
 
 ---
 
 ## ✨ How It Works
 
 1. **Initial Blank Canvas:**
-   When installed in any project (React, Next.js, Vue, Svelte, or Vanilla HTML), `dom-swarm` indexes every element on the page. The page begins completely blank while preserving the site's natural background colors and layout flow.
+   When installed in any project (React, Next.js, Vue, Svelte, or Vanilla HTML), `swarm66` indexes every element on the page. The page begins completely blank while preserving the site's natural background colors and layout flow.
 2. **Autonomous Swarm Construction:**
    A squad of 18 vibrant Figma-style AI cursors organized into 4-member squads systematically builds the page:
    - **Focused Tool Cursors:**
@@ -34,27 +34,27 @@ Install via npm, pnpm, or yarn:
 
 ```bash
 # npm
-npm install dom-swarm
+npm install swarm66
 
 # pnpm
-pnpm add dom-swarm
+pnpm add swarm66
 
 # yarn
-yarn add dom-swarm
+yarn add swarm66
 ```
 
 ### CDN / Standalone Script Tag
 
-Drop `dom-swarm` directly into any static HTML or WordPress website using a script tag:
+Drop `swarm66` directly into any static HTML, PHP, or WordPress website using a script tag:
 
 ```html
-<!-- Load dom-swarm global bundle from CDN -->
-<script src="https://unpkg.com/dom-swarm/dist/index.global.js"></script>
+<!-- Load swarm66 global bundle from CDN -->
+<script src="https://cdn.jsdelivr.net/npm/swarm66@1.0.0/dist/index.global.js"></script>
 
 <script>
   // Mount the swarm engine
-  const swarm = DomSwarm.enableSwarm({
-    agentCount: 20,
+  const swarm = enableSwarm({
+    agentCount: 18,
     hideOnStart: true,      // Page starts blank with native background
     vanishAtCursor: true,   // Swarm converges into user's cursor and vanishes when done
     typewriterEffect: true
@@ -69,10 +69,10 @@ Drop `dom-swarm` directly into any static HTML or WordPress website using a scri
 ### 1. Vanilla HTML / JavaScript
 
 ```js
-import { enableSwarm } from 'dom-swarm';
+import { enableSwarm } from 'swarm66';
 
 const swarm = enableSwarm({
-  agentCount: 20,
+  agentCount: 18,
   hideOnStart: true,
   vanishAtCursor: true,
   typewriterEffect: true,
@@ -84,12 +84,12 @@ const swarm = enableSwarm({
 
 ```tsx
 import React, { useEffect } from 'react';
-import { enableSwarm } from 'dom-swarm';
+import { enableSwarm } from 'swarm66';
 
 export function App() {
   useEffect(() => {
     const swarm = enableSwarm({
-      agentCount: 20,
+      agentCount: 18,
       hideOnStart: true,
       vanishAtCursor: true,
       typewriterEffect: true,
@@ -112,18 +112,18 @@ export function App() {
 
 ### 3. Next.js App Router (`'use client'`)
 
-`dom-swarm` has automatic SSR guards, so importing it in Next.js will never throw `window is not defined` errors.
+`swarm66` has automatic SSR guards, so importing it in Next.js will never throw `window is not defined` errors.
 
 ```tsx
 'use client';
 
 import { useEffect } from 'react';
-import { enableSwarm } from 'dom-swarm';
+import { enableSwarm } from 'swarm66';
 
 export default function SwarmProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const swarm = enableSwarm({
-      agentCount: 25,
+      agentCount: 18,
       hideOnStart: true,
       vanishAtCursor: true,
       typewriterEffect: true,
@@ -142,7 +142,7 @@ export default function SwarmProvider({ children }: { children: React.ReactNode 
 ```vue
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue';
-import { enableSwarm, type DomSwarmInstance } from 'dom-swarm';
+import { enableSwarm, type DomSwarmInstance } from 'swarm66';
 
 let swarm: DomSwarmInstance | null = null;
 
@@ -174,7 +174,7 @@ Works seamlessly in Angular standalone components or module-based architectures:
 
 ```typescript
 import { Component, OnInit, OnDestroy } from '@angular/core';
-import { enableSwarm, DomSwarmInstance } from 'dom-swarm';
+import { enableSwarm, DomSwarmInstance } from 'swarm66';
 
 @Component({
   selector: 'app-root',
@@ -209,7 +209,7 @@ export class AppComponent implements OnInit, OnDestroy {
 ```svelte
 <script>
   import { onMount } from 'svelte';
-  import { enableSwarm } from 'dom-swarm';
+  import { enableSwarm } from 'swarm66';
 
   onMount(() => {
     const swarm = enableSwarm({
@@ -229,7 +229,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
 ### 7. PHP (Vanilla PHP, Laravel, WordPress, Symfony)
 
-`dom-swarm` requires zero npm build steps for PHP and server-side languages. Simply load the IIFE bundle via CDN or local asset:
+`swarm66` requires zero npm build steps for PHP and server-side languages. Simply load the IIFE bundle via CDN or local asset:
 
 #### **Vanilla PHP (`index.php`):**
 ```php
@@ -241,11 +241,11 @@ export class AppComponent implements OnInit, OnDestroy {
   <title><?php echo "My PHP Application"; ?></title>
 </head>
 <body>
-  <h1>Welcome to PHP with dom-swarm</h1>
+  <h1>Welcome to PHP with swarm66</h1>
   <p>Rendered on the server, built live by cursors in the client.</p>
 
-  <!-- Load dom-swarm bundle -->
-  <script src="https://cdn.jsdelivr.net/npm/dom-swarm@1.0.0/dist/index.global.js"></script>
+  <!-- Load swarm66 bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/swarm66@1.0.0/dist/index.global.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', function() {
       window.enableSwarm({
@@ -271,7 +271,7 @@ export class AppComponent implements OnInit, OnDestroy {
 @endsection
 
 @push('scripts')
-  <script src="https://cdn.jsdelivr.net/npm/dom-swarm@1.0.0/dist/index.global.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/swarm66@1.0.0/dist/index.global.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       enableSwarm({
@@ -286,20 +286,20 @@ export class AppComponent implements OnInit, OnDestroy {
 #### **WordPress (`footer.php` or `functions.php`):**
 ```php
 // In functions.php:
-function enqueue_dom_swarm() {
+function enqueue_swarm66() {
     wp_enqueue_script(
-        'dom-swarm',
-        'https://cdn.jsdelivr.net/npm/dom-swarm@1.0.0/dist/index.global.js',
+        'swarm66',
+        'https://cdn.jsdelivr.net/npm/swarm66@1.0.0/dist/index.global.js',
         array(),
         '1.0.0',
         true
     );
     wp_add_inline_script(
-        'dom-swarm',
+        'swarm66',
         'document.addEventListener("DOMContentLoaded", function() { window.enableSwarm({ hideOnStart: true }); });'
     );
 }
-add_action('wp_enqueue_scripts', 'enqueue_dom_swarm');
+add_action('wp_enqueue_scripts', 'enqueue_swarm66');
 ```
 
 ### 8. Python (Django, Flask, FastAPI)
@@ -316,7 +316,7 @@ In your Django template (`base.html`):
 <body>
   {% block content %}{% endblock %}
 
-  <script src="https://cdn.jsdelivr.net/npm/dom-swarm@1.0.0/dist/index.global.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/swarm66@1.0.0/dist/index.global.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       window.enableSwarm({ hideOnStart: true });
@@ -328,14 +328,14 @@ In your Django template (`base.html`):
 
 ### 9. Ruby on Rails & ASP.NET Core
 
-- **Rails (ERB `application.html.erb`):** Include via `<%= javascript_include_tag 'https://cdn.jsdelivr.net/npm/dom-swarm@1.0.0/dist/index.global.js' %>` or importmap `pin "dom-swarm"`.
-- **ASP.NET Core (`_Layout.cshtml`):** Add `<script src="~/js/dom-swarm.global.js"></script>` before the closing `</body>` tag.
+- **Rails (ERB `application.html.erb`):** Include via `<%= javascript_include_tag 'https://cdn.jsdelivr.net/npm/swarm66@1.0.0/dist/index.global.js' %>` or importmap `pin "swarm66"`.
+- **ASP.NET Core (`_Layout.cshtml`):** Add `<script src="~/js/swarm66.global.js"></script>` before the closing `</body>` tag.
 
 ---
 
 ## 📱 Mobile & Touch Compatibility
 
-`dom-swarm` is built from the ground up for modern responsive web development and touch screens:
+`swarm66` is built from the ground up for modern responsive web development and touch screens:
 
 - **Touch Interaction**: Automatically captures `touchstart` and `touchmove` events on smartphones and tablets, allowing idle cursors to orbit and converge directly around the user's thumb or finger.
 - **Adaptive Screen Sizing**: Evaluates `window.innerWidth` and `window.innerHeight` dynamically during simulation. Boids flock boundaries gracefully scale whether on a 360px mobile viewport or a 3840px ultrawide monitor.
@@ -415,4 +415,4 @@ Then visit `http://localhost:3000/demo/index.html`.
 
 ## 📄 License
 
-MIT © [Dom Swarm Authors](https://github.com/dom-swarm/dom-swarm)
+MIT © [leozodiac](https://github.com/leozodiac/swarm66)

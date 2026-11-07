@@ -3,7 +3,7 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: ['src/index.ts'],
   format: ['esm', 'cjs', 'iife'],
-  globalName: 'DomSwarm',
+  globalName: 'Swarm66',
   dts: true,
   clean: true,
   minify: true,

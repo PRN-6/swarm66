@@ -2,13 +2,20 @@ import { SwarmConfig, DomSwarmInstance, ResolvedSwarmConfig, SwarmMetrics } from
 import { SwarmEngine } from './core/SwarmEngine';
 
 /**
- * Public class implementation of DomSwarm.
+ * Public class implementation of Swarm66 / DomSwarm.
  */
-export class DomSwarm extends SwarmEngine {
+export class Swarm66 extends SwarmEngine {
   constructor(config?: SwarmConfig) {
     super(config);
   }
 }
+
+export class DomSwarm extends Swarm66 {}
+
+/**
+ * Convenience alias for swarm66 initialization.
+ */
+export const swarm66 = enableSwarm;
 
 /**
  * Convenience factory to mount and enable the DomSwarm visual engine on any page.
@@ -64,6 +71,9 @@ export function enableSwarm(config?: SwarmConfig): DomSwarmInstance {
 // Auto-bind to window global for vanilla HTML, PHP, Laravel, WordPress, and Django templates
 if (typeof window !== 'undefined') {
   (window as any).enableSwarm = enableSwarm;
+  (window as any).swarm66 = enableSwarm;
+  (window as any).Swarm66 = Swarm66;
+  (window as any).DomSwarm = DomSwarm;
 }
 
 // Re-export all TypeScript types and interfaces

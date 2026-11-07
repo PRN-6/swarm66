@@ -1,5 +1,5 @@
 {
-  "name": "dom-swarm",
+  "name": "swarm66",
   "version": "1.0.0",
   "description": "Universal plug-and-play autonomous cursor swarm that reverse-engineers and constructs DOM elements live using Boids physics.",
   "main": "./dist/index.cjs",
@@ -52,12 +52,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dom-swarm/dom-swarm.git"
+    "url": "git+https://github.com/leozodiac/swarm66.git"
   },
   "bugs": {
-    "url": "https://github.com/dom-swarm/dom-swarm/issues"
+    "url": "https://github.com/leozodiac/swarm66/issues"
   },
-  "homepage": "https://github.com/dom-swarm/dom-swarm#readme",
+  "homepage": "https://github.com/leozodiac/swarm66#readme",
   "sideEffects": false,
   "devDependencies": {
     "@types/node": "^22.13.1",
