@@ -402,23 +402,23 @@
     <aside class="sidebar-left">
       <div class="nav-group">
         <div class="nav-group-title">Getting Started</div>
-        <a href="#quickstart" class="nav-item active swarm-item">Quickstart Guide</a>
-        <a href="#installation" class="nav-item swarm-item">Installation</a>
-        <a href="#architecture" class="nav-item swarm-item">Architecture Overview</a>
+        <a href="#quickstart" class="nav-item active swarm-item" data-page="quickstart">Quickstart Guide</a>
+        <a href="#installation" class="nav-item swarm-item" data-page="installation">Installation</a>
+        <a href="#architecture" class="nav-item swarm-item" data-page="architecture">Architecture Overview</a>
       </div>
 
       <div class="nav-group">
         <div class="nav-group-title">Core Systems</div>
-        <a href="#boids" class="nav-item swarm-item">Flocking Physics</a>
-        <a href="#shadow-dom" class="nav-item swarm-item">Shadow DOM Layer</a>
-        <a href="#telemetry" class="nav-item swarm-item">Realtime Telemetry</a>
+        <a href="#boids" class="nav-item swarm-item" data-page="boids">Flocking Physics</a>
+        <a href="#shadow-dom" class="nav-item swarm-item" data-page="shadow-dom">Shadow DOM Layer</a>
+        <a href="#telemetry" class="nav-item swarm-item" data-page="telemetry">Realtime Telemetry</a>
       </div>
 
       <div class="nav-group">
         <div class="nav-group-title">Framework Adapters</div>
-        <a href="#react" class="nav-item swarm-item">React & Next.js</a>
-        <a href="#vue" class="nav-item swarm-item">Vue 3 & Nuxt</a>
-        <a href="#svelte" class="nav-item swarm-item">SvelteKit</a>
+        <a href="#react" class="nav-item swarm-item" data-page="react">React & Next.js</a>
+        <a href="#vue" class="nav-item swarm-item" data-page="vue">Vue 3 & Nuxt</a>
+        <a href="#svelte" class="nav-item swarm-item" data-page="svelte">SvelteKit</a>
       </div>
     </aside>
 
@@ -546,6 +546,55 @@ const swarm = enableSwarm({
   <script>
     let swarm = null;
 
+    const chapterData = {
+      quickstart: {
+        title: 'Swarm Engine Integration',
+        lead: 'Learn how to reverse-engineer and mount an autonomous agent swarm onto any production webpage using zero external dependencies and Reynolds Boids physics.',
+        alertTitle: '⚡ Zero Build Tooling Required',
+        alertDesc: 'Vortex mounts completely within an isolated Shadow DOM container. It never collides with Tailwind, Bootstrap, or custom CSS frameworks.',
+        code: `import { enableSwarm } from 'dom-swarm';\n\nconst swarm = enableSwarm({\n  agentCount: 18,\n  teamSize: 4,\n  concurrency: 4,\n  hideOnStart: true,\n  copyPasteDuplicates: true,\n  vanishAtCursor: true,\n});`
+      },
+      installation: {
+        title: 'Package Installation & Setup',
+        lead: 'dom-swarm is packaged as a universal zero-dependency module supporting ESM, CommonJS, and standalone script tag inclusion.',
+        alertTitle: '📦 Pure Zero Runtime Dependencies',
+        alertDesc: 'No lodash, no three.js, no framer-motion. Exactly 0 dependencies in node_modules.',
+        code: `# Using npm\nnpm install dom-swarm\n\n# Using pnpm\npnpm add dom-swarm\n\n# Using yarn\nyarn add dom-swarm`
+      },
+      architecture: {
+        title: 'Architecture & Shadow DOM Isolation',
+        lead: 'Every cursor, bounding box, guide line, and dimension badge is isolated inside an Open Shadow DOM attached to document.body.',
+        alertTitle: '🛡️ Style Encapsulation Guaranteed',
+        alertDesc: 'CSS reset ensures host site reset sheets or global element styles cannot bleed into the swarm.',
+        code: `// Shadow DOM root\n<dom-swarm-overlay>\n  #shadow-root (open)\n    <div class="swarm-root">\n      <div class="swarm-overlays-layer"></div>\n      <div class="swarm-agents-layer"></div>\n    </div>\n</dom-swarm-overlay>`
+      },
+      boids: {
+        title: 'Reynolds Boids Flocking Math',
+        lead: 'When idle, cursor agents calculate separation, alignment, and cohesion vectors to naturally swarm around user gestures.',
+        alertTitle: '🦅 Mathematical Flocking Simulation',
+        alertDesc: 'Separation prevents crowding (r < 32px), Alignment steers with neighbors, Cohesion pulls towards group center.',
+        code: `// Steer force calculation\nconst steer = sub(desired, agent.velocity);\nconst force = limit(steer, agent.maxForce);\nagent.applyForce(force);`
+      }
+    };
+
+    function loadDocChapter(key) {
+      const data = chapterData[key] || chapterData.quickstart;
+      const main = document.querySelector('.docs-main');
+      if (!main) return;
+
+      const titleEl = main.querySelector('.page-title');
+      const leadEl = main.querySelector('.lead');
+      const alertTitle = main.querySelector('.callout h4');
+      const alertDesc = main.querySelector('.callout p');
+      const codeBlock = main.querySelector('.code-block code');
+
+      if (titleEl) titleEl.textContent = data.title;
+      if (leadEl) leadEl.textContent = data.lead;
+      if (alertTitle) alertTitle.textContent = data.alertTitle;
+      if (alertDesc) alertDesc.textContent = data.alertDesc;
+      if (codeBlock) codeBlock.textContent = data.code;
+    }
+
     function initSwarm() {
       const enable = typeof DomSwarm === 'function'
         ? DomSwarm
@@ -559,6 +608,7 @@ const swarm = enableSwarm({
           hideOnStart: true,
           copyPasteDuplicates: true,
           vanishAtCursor: true,
+          rebuildOnRouteChange: true,
           typewriterEffect: true,
         });
       }
@@ -566,6 +616,21 @@ const swarm = enableSwarm({
 
     window.addEventListener('DOMContentLoaded', () => {
       initSwarm();
+
+      // Client-side SPA chapter navigation
+      document.querySelectorAll('.nav-item').forEach(link => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          const pageKey = link.getAttribute('data-page') || 'quickstart';
+          document.querySelectorAll('.nav-item').forEach(l => l.classList.remove('active'));
+          link.classList.add('active');
+
+          loadDocChapter(pageKey);
+
+          // Client-side route change automatically intercepted by dom-swarm!
+          history.pushState({ page: pageKey }, '', '#' + pageKey);
+        });
+      });
 
       const btn = document.getElementById('btnReplay');
       if (btn) {

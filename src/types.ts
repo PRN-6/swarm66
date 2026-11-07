@@ -101,6 +101,13 @@ export interface SwarmConfig {
   vanishAtCursor?: boolean;
 
   /**
+   * Automatically detect SPA client-side route changes (Next.js, React Router, Vue Router, Nuxt, SvelteKit, Turbo)
+   * and reconstruct elements on every visited page.
+   * @default true
+   */
+  rebuildOnRouteChange?: boolean;
+
+  /**
    * Whether to construct elements automatically when they enter the viewport via scrolling.
    * @default true
    */
@@ -267,6 +274,7 @@ export interface DomSwarmInstance {
   pause(): void;
   resume(): void;
   replay(): void;
+  handlePageNavigation(): void;
   buildElement(element: HTMLElement): Promise<void>;
   getConfig(): Readonly<ResolvedSwarmConfig>;
   updateConfig(newConfig: Partial<SwarmConfig>): void;

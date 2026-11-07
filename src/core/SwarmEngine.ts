@@ -26,6 +26,7 @@ const DEFAULT_CONFIG: ResolvedSwarmConfig = {
   concurrency: 4,
   buildOrder: 'top-to-bottom',
   vanishAtCursor: true,
+  rebuildOnRouteChange: true,
   buildOnScroll: true,
   typewriterEffect: true,
   showGuides: true,
@@ -77,6 +78,11 @@ export class SwarmEngine implements DomSwarmInstance {
 
   // History of recently constructed element templates for Figma-style copy/paste duplicate animations
   private constructedTemplates: Array<{ element: HTMLElement; rect: DOMRect }> = [];
+
+  // Multi-page & client-side SPA route tracking
+  private lastUrl = typeof window !== 'undefined' ? window.location.href : '';
+  private unbindRouteListeners: (() => void) | null = null;
+  private routeChangeDebounce: any = null;
 
   constructor(userConfig?: SwarmConfig) {
     this.config = {
@@ -172,6 +178,7 @@ export class SwarmEngine implements DomSwarmInstance {
     window.addEventListener('touchmove', this.onTouchMove, { passive: true });
     window.addEventListener('scroll', this.onScroll, { passive: true });
     window.addEventListener('resize', this.onResize, { passive: true });
+    this.setupRouteListeners();
   }
 
   private onMouseMove = (e: MouseEvent): void => {
@@ -689,11 +696,148 @@ export class SwarmEngine implements DomSwarmInstance {
   }
 
   /**
+   * Binds SPA client-side route change listeners for Next.js, React Router, Vue, Nuxt, SvelteKit, Turbo, etc.
+   */
+  private setupRouteListeners(): void {
+    if (typeof window === 'undefined' || !this.config.rebuildOnRouteChange) return;
+
+    this.lastUrl = window.location.href;
+
+    const onRouteEvent = () => this.handleRouteChange();
+
+    window.addEventListener('popstate', onRouteEvent);
+    window.addEventListener('hashchange', onRouteEvent);
+
+    // Framework-specific SPA view transition events
+    window.addEventListener('turbo:load', onRouteEvent);
+    window.addEventListener('turbolinks:load', onRouteEvent);
+    window.addEventListener('astro:page-load', onRouteEvent);
+    window.addEventListener('pjax:end', onRouteEvent);
+
+    // Intercept pushState & replaceState for Next.js, React Router, Vue Router, Nuxt, SvelteKit
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
+    const self = this;
+
+    history.pushState = function (...args) {
+      const result = originalPushState.apply(this, args);
+      self.handleRouteChange();
+      return result;
+    };
+
+    history.replaceState = function (...args) {
+      const result = originalReplaceState.apply(this, args);
+      self.handleRouteChange();
+      return result;
+    };
+
+    this.unbindRouteListeners = () => {
+      window.removeEventListener('popstate', onRouteEvent);
+      window.removeEventListener('hashchange', onRouteEvent);
+      window.removeEventListener('turbo:load', onRouteEvent);
+      window.removeEventListener('turbolinks:load', onRouteEvent);
+      window.removeEventListener('astro:page-load', onRouteEvent);
+      window.removeEventListener('pjax:end', onRouteEvent);
+      history.pushState = originalPushState;
+      history.replaceState = originalReplaceState;
+    };
+  }
+
+  private handleRouteChange(): void {
+    if (this.destroyed || !this.config.rebuildOnRouteChange) return;
+    if (typeof window === 'undefined') return;
+
+    if (this.routeChangeDebounce) {
+      clearTimeout(this.routeChangeDebounce);
+    }
+
+    this.routeChangeDebounce = setTimeout(() => {
+      const newUrl = window.location.href;
+      if (newUrl === this.lastUrl && this.isFinishedState) return;
+      this.lastUrl = newUrl;
+      this.handlePageNavigation();
+    }, 60);
+  }
+
+  /**
+   * Public API: Reinitializes and launches the swarm construction sequence for a newly navigated page.
+   * Cancels in-flight tasks, clears templates, scans the new page's DOM,
+   * applies initial blank canvas hiding, respawns the 18 agents, and begins live construction.
+   */
+  public handlePageNavigation(): void {
+    if (this.destroyed) return;
+
+    // 1. Cancel in-flight tasks and clear existing overlays
+    this.tasks.forEach((task) => {
+      task.cancelEffect?.();
+      if (task.boxElement) {
+        this.overlayManager.removeBoundingBox(task.boxElement, task.id);
+      }
+      if (task.cloneElement) {
+        this.overlayManager.removeGhostClone(task.cloneElement);
+      }
+    });
+    this.tasks.clear();
+    this.constructedTemplates = [];
+    this.buildQueue = [];
+    this.constructedCount = 0;
+    this.isFinishedState = false;
+    this.isConverging = false;
+
+    // 2. Allow a brief tick for SPA frameworks (Next.js / React / Vue) to mount the new route components
+    setTimeout(() => {
+      if (this.destroyed) return;
+
+      // 3. Scan and hide new page elements
+      const elements = this.domScanner.scanAndIndex();
+      this.buildQueue = [...elements];
+
+      // 4. Respawn and reposition all 18 agents from the screen edges
+      const width = window.innerWidth || 1024;
+      const height = window.innerHeight || 768;
+
+      this.agents.forEach((agent) => {
+        const pos = vec(
+          randomRange(width * 0.1, width * 0.9),
+          randomRange(height * 0.1, height * 0.9)
+        );
+        agent.reset(pos, this.overlayManager);
+      });
+
+      // 5. Begin processing build queue for the new page
+      setTimeout(() => {
+        if (!this.destroyed) {
+          this.processBuildQueue();
+        }
+      }, 150);
+    }, 80);
+  }
+
+  /**
    * Adds an element to the queue dynamically.
    */
   private enqueueElement(element: HTMLElement): void {
     if (!this.buildQueue.includes(element)) {
       this.buildQueue.push(element);
+
+      // If swarm has finished/vanished, wake up agents to build the newly added element!
+      if (this.isFinishedState) {
+        this.isFinishedState = false;
+        this.isConverging = false;
+        const width = window.innerWidth || 1024;
+        const height = window.innerHeight || 768;
+
+        this.agents.forEach((agent) => {
+          if (agent.state === 'VANISHED') {
+            const pos = vec(
+              randomRange(width * 0.1, width * 0.9),
+              randomRange(height * 0.1, height * 0.9)
+            );
+            agent.reset(pos, this.overlayManager);
+          }
+        });
+      }
+
       this.processBuildQueue();
     }
   }
@@ -905,6 +1049,16 @@ export class SwarmEngine implements DomSwarmInstance {
       window.removeEventListener('touchmove', this.onTouchMove);
       window.removeEventListener('scroll', this.onScroll);
       window.removeEventListener('resize', this.onResize);
+    }
+
+    if (this.unbindRouteListeners) {
+      this.unbindRouteListeners();
+      this.unbindRouteListeners = null;
+    }
+
+    if (this.routeChangeDebounce) {
+      clearTimeout(this.routeChangeDebounce);
+      this.routeChangeDebounce = null;
     }
 
     this.domScanner.destroy();

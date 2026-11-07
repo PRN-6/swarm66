@@ -37,6 +37,7 @@ export function enableSwarm(config?: SwarmConfig): DomSwarmInstance {
       pause: () => {},
       resume: () => {},
       replay: () => {},
+      handlePageNavigation: () => {},
       buildElement: async () => {},
       getConfig: () => ({} as Readonly<ResolvedSwarmConfig>),
       updateConfig: () => {},

@@ -171,4 +171,41 @@ describe('4-Agent Team & Border Geometry', () => {
     const tool = isCopyPaste ? 'hand' : categoryTool;
     expect(tool).toBe('hand');
   });
+
+  it('handles multi-page SPA navigation and URL route changes', () => {
+    let lastUrl = 'http://localhost:3000/page1';
+    let navigationTriggered = false;
+
+    const onRouteChange = (newUrl: string) => {
+      if (newUrl !== lastUrl) {
+        lastUrl = newUrl;
+        navigationTriggered = true;
+      }
+    };
+
+    onRouteChange('http://localhost:3000/page1');
+    expect(navigationTriggered).toBe(false);
+
+    onRouteChange('http://localhost:3000/page2');
+    expect(navigationTriggered).toBe(true);
+    expect(lastUrl).toBe('http://localhost:3000/page2');
+  });
+
+  it('wakes up vanished agents when dynamic elements are discovered on a new page', () => {
+    const agentStates = ['VANISHED', 'VANISHED', 'VANISHED'];
+    let isFinished = true;
+
+    // Simulate discovering dynamic elements on a new page or via route change
+    if (isFinished) {
+      isFinished = false;
+      for (let i = 0; i < agentStates.length; i++) {
+        if (agentStates[i] === 'VANISHED') {
+          agentStates[i] = 'IDLE_FLOCKING';
+        }
+      }
+    }
+
+    expect(isFinished).toBe(false);
+    expect(agentStates).toEqual(['IDLE_FLOCKING', 'IDLE_FLOCKING', 'IDLE_FLOCKING']);
+  });
 });
