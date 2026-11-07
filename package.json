@@ -1,6 +1,6 @@
 {
   "name": "@leozodiac/swarm66",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Universal plug-and-play autonomous cursor swarm that reverse-engineers and constructs DOM elements live using Boids physics.",
   "publishConfig": {
     "access": "public"
