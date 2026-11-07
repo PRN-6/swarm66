@@ -283,8 +283,6 @@ export class SwarmEngine implements DomSwarmInstance {
         if (task.completed) return;
         const rect = task.element.getBoundingClientRect();
         task.rect = rect;
-        const cx = rect.left + rect.width / 2;
-        const cy = rect.top + rect.height / 2;
 
         if (task.phase === 'CLONING') {
           const elapsed = timestamp - task.expandStartTime;
@@ -376,11 +374,12 @@ export class SwarmEngine implements DomSwarmInstance {
           const p = Math.min(elapsed / task.expandDuration, 1.0);
           const ease = 1 - Math.pow(1 - p, 3); // Smooth cubic ease out
 
+          // Anchor at top-left origin: rect.left, rect.top
+          const curLeft = rect.left;
+          const curTop = rect.top;
           const curW = Math.max(4, rect.width * ease);
           const curH = Math.max(4, rect.height * ease);
-          const curLeft = cx - curW / 2;
-          const curTop = cy - curH / 2;
-          const curOpacity = Math.min(p * 2, 1);
+          const curOpacity = Math.min(p * 2.5, 1);
 
           if (task.boxElement) {
             this.overlayManager.updateBoxGeometry(
@@ -391,29 +390,32 @@ export class SwarmEngine implements DomSwarmInstance {
             );
           }
 
-          // Lock the 4 agents directly to the 4 expanding edges/corners without rotation
-          const corners = [
-            { x: curLeft, y: curTop },                         // Top-Left corner
-            { x: curLeft + curW, y: curTop },                  // Top-Right corner
-            { x: curLeft + curW, y: curTop + curH },           // Bottom-Right corner
-            { x: curLeft, y: curTop + curH },                  // Bottom-Left corner
-          ];
-
+          // Single agent selects top-left edge and drags opposite bottom-right corner
+          // until the shape reaches the desired size. Other agents remain hidden during the drag.
           task.assignedAgents.forEach((agentId, idx) => {
             const agent = this.agents.find((a) => a.id === agentId);
-            const corner = corners[idx % corners.length];
-            if (agent && corner) {
-              agent.position.x = corner.x;
-              agent.position.y = corner.y;
+            if (!agent) return;
+
+            if (idx === 0) {
+              // Lead agent is directly locked to the corner/edge being dragged
+              agent.position.x = curLeft + curW;
+              agent.position.y = curTop + curH;
               agent.velocity = vec(0, 0);
+              agent.element.style.opacity = '1';
               // Naturally upright cursor (0deg) - no rotation
               this.overlayManager.updateAgentTransform(
                 agent.element,
-                corner.x,
-                corner.y,
+                agent.position.x,
+                agent.position.y,
                 0,
                 1.05
               );
+            } else {
+              // Hide the other agents during the drag
+              agent.element.style.opacity = '0';
+              agent.position.x = rect.left + rect.width / 2;
+              agent.position.y = rect.top + rect.height / 2;
+              agent.velocity = vec(0, 0);
             }
           });
 
@@ -423,6 +425,7 @@ export class SwarmEngine implements DomSwarmInstance {
             task.assignedAgents.forEach((agentId, idx) => {
               const agent = this.agents.find((a) => a.id === agentId);
               if (agent) {
+                agent.element.style.opacity = '1';
                 agent.setConstructing();
                 agent.targetRect = rect;
                 // Only the first cursor uses pencil for text; other border cursors use the standard pointer
@@ -577,14 +580,14 @@ export class SwarmEngine implements DomSwarmInstance {
       // Create ghost wireframe clone at source coordinates for Figma-style copy-paste glide
       cloneEl = this.overlayManager.createGhostClone(taskId, sourceRect);
     } else {
-      // The box starts at size 0 at the element center (drawn and expanded live by cursors)
+      // The box starts at size 0 anchored at the top-left edge (dragged open live by single agent)
       boxEl = this.overlayManager.createBoundingBox(
         taskId,
         rect,
         boxType,
         this.config.showDimensions,
         this.config.showGuides,
-        { left: elementCenter.x, top: elementCenter.y, width: 0, height: 0, opacity: 0 }
+        { left: rect.left, top: rect.top, width: 0, height: 0, opacity: 0 }
       );
     }
 
@@ -602,7 +605,7 @@ export class SwarmEngine implements DomSwarmInstance {
       sourceRect,
       startTime: performance.now(),
       expandStartTime: performance.now(),
-      expandDuration: isCopyPaste ? 320 : 260,
+      expandDuration: isCopyPaste ? 320 : 280,
       duration: this.config.buildDuration,
       isText,
       boxElement: boxEl,
@@ -621,13 +624,27 @@ export class SwarmEngine implements DomSwarmInstance {
     const startPos =
       isCopyPaste && sourceRect
         ? vec(sourceRect.left + sourceRect.width / 2, sourceRect.top + sourceRect.height / 2)
-        : elementCenter;
+        : vec(rect.left, rect.top);
 
-    // Dispatch agents: lead agent uses the specialized tool (pen or hand), others use the primary pointer
+    // Dispatch agents: lead agent uses the specialized tool (pen or hand or pointer), others use the primary pointer
     assigned.forEach((agent, idx) => {
       const role = borderRoles[idx % borderRoles.length] || 'top';
       const agentTool: AgentType = idx === 0 ? initialTool : 'pointer';
       agent.assignTarget(startPos, element, taskId, role, rect, agentTool, this.overlayManager);
+
+      // When starting a new shape drag (not copy-paste), only the single lead agent is visible dragging the shape
+      if (!isCopyPaste) {
+        if (idx === 0) {
+          agent.position.x = rect.left;
+          agent.position.y = rect.top;
+          agent.element.style.opacity = '1';
+        } else {
+          agent.element.style.opacity = '0';
+          agent.position.x = rect.left + rect.width / 2;
+          agent.position.y = rect.top + rect.height / 2;
+        }
+      }
+
       this.config.onAgentStateChange?.(agent.id, 'MOVING_TO_TARGET');
     });
   }

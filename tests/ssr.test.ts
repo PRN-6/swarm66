@@ -31,6 +31,7 @@ describe('Server-Side Rendering (SSR) Guard', () => {
     expect(() => swarm.pause()).not.toThrow();
     expect(() => swarm.resume()).not.toThrow();
     expect(() => swarm.replay()).not.toThrow();
+    expect(() => swarm.handlePageNavigation()).not.toThrow();
     expect(() => swarm.updateConfig({ agentCount: 50 })).not.toThrow();
     expect(() => swarm.destroy()).not.toThrow();
 

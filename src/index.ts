@@ -61,6 +61,11 @@ export function enableSwarm(config?: SwarmConfig): DomSwarmInstance {
   return new DomSwarm(config);
 }
 
+// Auto-bind to window global for vanilla HTML, PHP, Laravel, WordPress, and Django templates
+if (typeof window !== 'undefined') {
+  (window as any).enableSwarm = enableSwarm;
+}
+
 // Re-export all TypeScript types and interfaces
 export * from './types';
 export { SwarmEngine } from './core/SwarmEngine';

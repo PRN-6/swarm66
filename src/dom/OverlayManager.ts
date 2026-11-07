@@ -189,32 +189,23 @@ export class OverlayManager {
     box.style.height = `${Math.max(0, geo.height)}px`;
     box.style.opacity = (geo.opacity ?? 1).toString();
 
-    if (type === 'blue') {
-      const corners = ['tl', 'tr', 'bl', 'br'];
-      corners.forEach((c) => {
-        const handle = document.createElement('div');
-        handle.className = `swarm-corner-handle handle-${c}`;
-        box.appendChild(handle);
-      });
+    // 4 corner handles for Figma-style shape creation and editing
+    const corners = ['tl', 'tr', 'bl', 'br'];
+    corners.forEach((c) => {
+      const handle = document.createElement('div');
+      handle.className = `swarm-corner-handle handle-${c}`;
+      box.appendChild(handle);
+    });
 
-      if (showDimensions) {
-        const badge = document.createElement('div');
-        badge.className = 'swarm-dimension-badge';
-        badge.textContent = `${Math.round(geo.width)} × ${Math.round(geo.height)}`;
-        box.appendChild(badge);
-      }
-    } else {
-      if (showGuides && this.guidesLayer) {
-        this.createAlignmentGuides(id, rect);
-      }
+    if (showDimensions) {
+      const badge = document.createElement('div');
+      badge.className = 'swarm-dimension-badge';
+      badge.textContent = `${Math.round(geo.width)} × ${Math.round(geo.height)}`;
+      box.appendChild(badge);
+    }
 
-      if (showDimensions) {
-        const badge = document.createElement('div');
-        badge.className = 'swarm-distance-badge';
-        const distVal = Math.round(Math.min(rect.left, rect.top));
-        badge.textContent = `${distVal}px`;
-        box.appendChild(badge);
-      }
+    if (type === 'red' && showGuides && this.guidesLayer) {
+      this.createAlignmentGuides(id, rect);
     }
 
     this.overlaysLayer.appendChild(box);
@@ -628,6 +619,9 @@ export class OverlayManager {
         border-radius: 1px;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
       }
+      .box-red .swarm-corner-handle {
+        border-color: #f24822;
+      }
       .handle-tl { top: -4px; left: -4px; }
       .handle-tr { top: -4px; right: -4px; }
       .handle-bl { bottom: -4px; left: -4px; }
@@ -648,6 +642,9 @@ export class OverlayManager {
         white-space: nowrap;
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
         letter-spacing: 0.2px;
+      }
+      .box-red .swarm-dimension-badge {
+        background: #f24822;
       }
       .swarm-distance-badge {
         position: absolute;

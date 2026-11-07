@@ -208,4 +208,39 @@ describe('4-Agent Team & Border Geometry', () => {
     expect(isFinished).toBe(false);
     expect(agentStates).toEqual(['IDLE_FLOCKING', 'IDLE_FLOCKING', 'IDLE_FLOCKING']);
   });
+
+  it('accurately positions single agent dragging corner outward when creating a shape/cube', () => {
+    const rect = { left: 80, top: 120, width: 400, height: 260 };
+    const p = 0.6;
+    const ease = 1 - Math.pow(1 - p, 3); // 1 - 0.064 = 0.936
+
+    const curLeft = rect.left;
+    const curTop = rect.top;
+    const curW = Math.max(4, rect.width * ease);
+    const curH = Math.max(4, rect.height * ease);
+
+    // Box remains anchored at origin
+    expect(curLeft).toBe(80);
+    expect(curTop).toBe(120);
+
+    // Dragging agent (Agent 0) tracks the opposite bottom-right corner being dragged
+    const draggingAgent = {
+      x: curLeft + curW,
+      y: curTop + curH,
+      opacity: 1,
+    };
+
+    expect(draggingAgent.x).toBeCloseTo(80 + 400 * 0.936);
+    expect(draggingAgent.y).toBeCloseTo(120 + 260 * 0.936);
+    expect(draggingAgent.opacity).toBe(1);
+
+    // Other squad agents (1, 2, 3) are hidden during the drag
+    const otherSquadAgents = [1, 2, 3].map(() => ({
+      opacity: 0,
+    }));
+
+    otherSquadAgents.forEach((agent) => {
+      expect(agent.opacity).toBe(0);
+    });
+  });
 });

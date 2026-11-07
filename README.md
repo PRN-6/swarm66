@@ -137,7 +137,7 @@ export default function SwarmProvider({ children }: { children: React.ReactNode 
 }
 ```
 
-### 4. Vue 3 (`onMounted`)
+### 4. Vue 3 & Nuxt 3 (`onMounted`)
 
 ```vue
 <script setup lang="ts">
@@ -148,7 +148,7 @@ let swarm: DomSwarmInstance | null = null;
 
 onMounted(() => {
   swarm = enableSwarm({
-    agentCount: 20,
+    agentCount: 18,
     hideOnStart: true,
     vanishAtCursor: true,
     typewriterEffect: true,
@@ -167,6 +167,182 @@ onUnmounted(() => {
   </div>
 </template>
 ```
+
+### 5. Angular (`ngOnInit` & `ngOnDestroy`)
+
+Works seamlessly in Angular standalone components or module-based architectures:
+
+```typescript
+import { Component, OnInit, OnDestroy } from '@angular/core';
+import { enableSwarm, DomSwarmInstance } from 'dom-swarm';
+
+@Component({
+  selector: 'app-root',
+  template: `
+    <main>
+      <h1>Angular Live Construction</h1>
+      <p>Autonomous AI cursors reverse-engineer and construct your Angular DOM.</p>
+    </main>
+  `
+})
+export class AppComponent implements OnInit, OnDestroy {
+  private swarm?: DomSwarmInstance;
+
+  ngOnInit(): void {
+    this.swarm = enableSwarm({
+      agentCount: 18,
+      teamSize: 4,
+      hideOnStart: true,
+      buildOrder: 'top-to-bottom',
+      rebuildOnRouteChange: true, // Auto-rebuilds across Angular Router navigation
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.swarm?.destroy();
+  }
+}
+```
+
+### 6. Svelte & SvelteKit (`onMount`)
+
+```svelte
+<script>
+  import { onMount } from 'svelte';
+  import { enableSwarm } from 'dom-swarm';
+
+  onMount(() => {
+    const swarm = enableSwarm({
+      hideOnStart: true,
+      typewriterEffect: true,
+    });
+
+    return () => swarm.destroy();
+  });
+</script>
+
+<main>
+  <h1>SvelteKit Swarm Experience</h1>
+  <p>Universal zero-dependency client animation.</p>
+</main>
+```
+
+### 7. PHP (Vanilla PHP, Laravel, WordPress, Symfony)
+
+`dom-swarm` requires zero npm build steps for PHP and server-side languages. Simply load the IIFE bundle via CDN or local asset:
+
+#### **Vanilla PHP (`index.php`):**
+```php
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><?php echo "My PHP Application"; ?></title>
+</head>
+<body>
+  <h1>Welcome to PHP with dom-swarm</h1>
+  <p>Rendered on the server, built live by cursors in the client.</p>
+
+  <!-- Load dom-swarm bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/dom-swarm@1.0.0/dist/index.global.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      window.enableSwarm({
+        hideOnStart: true,
+        typewriterEffect: true,
+        vanishAtCursor: true
+      });
+    });
+  </script>
+</body>
+</html>
+```
+
+#### **Laravel (Blade Template `welcome.blade.php`):**
+```html
+@extends('layouts.app')
+
+@section('content')
+  <div class="hero">
+    <h1>{{ __('Empowering Developers') }}</h1>
+    <p>{{ __('Built with Laravel and styled with Tailwind.') }}</p>
+  </div>
+@endsection
+
+@push('scripts')
+  <script src="https://cdn.jsdelivr.net/npm/dom-swarm@1.0.0/dist/index.global.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      enableSwarm({
+        hideOnStart: true,
+        concurrency: 4,
+      });
+    });
+  </script>
+@endpush
+```
+
+#### **WordPress (`footer.php` or `functions.php`):**
+```php
+// In functions.php:
+function enqueue_dom_swarm() {
+    wp_enqueue_script(
+        'dom-swarm',
+        'https://cdn.jsdelivr.net/npm/dom-swarm@1.0.0/dist/index.global.js',
+        array(),
+        '1.0.0',
+        true
+    );
+    wp_add_inline_script(
+        'dom-swarm',
+        'document.addEventListener("DOMContentLoaded", function() { window.enableSwarm({ hideOnStart: true }); });'
+    );
+}
+add_action('wp_enqueue_scripts', 'enqueue_dom_swarm');
+```
+
+### 8. Python (Django, Flask, FastAPI)
+
+In your Django template (`base.html`):
+
+```html
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+  {% block content %}{% endblock %}
+
+  <script src="https://cdn.jsdelivr.net/npm/dom-swarm@1.0.0/dist/index.global.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      window.enableSwarm({ hideOnStart: true });
+    });
+  </script>
+</body>
+</html>
+```
+
+### 9. Ruby on Rails & ASP.NET Core
+
+- **Rails (ERB `application.html.erb`):** Include via `<%= javascript_include_tag 'https://cdn.jsdelivr.net/npm/dom-swarm@1.0.0/dist/index.global.js' %>` or importmap `pin "dom-swarm"`.
+- **ASP.NET Core (`_Layout.cshtml`):** Add `<script src="~/js/dom-swarm.global.js"></script>` before the closing `</body>` tag.
+
+---
+
+## 📱 Mobile & Touch Compatibility
+
+`dom-swarm` is built from the ground up for modern responsive web development and touch screens:
+
+- **Touch Interaction**: Automatically captures `touchstart` and `touchmove` events on smartphones and tablets, allowing idle cursors to orbit and converge directly around the user's thumb or finger.
+- **Adaptive Screen Sizing**: Evaluates `window.innerWidth` and `window.innerHeight` dynamically during simulation. Boids flock boundaries gracefully scale whether on a 360px mobile viewport or a 3840px ultrawide monitor.
+- **Single-Agent Touch Drags**: The Figma-style diagonal corner drag scales smoothly to mobile dimensions, rendering pixel dimension badges that adapt to compact screens without horizontal overflow.
+- **Orientation & Viewport Resize**: Listens to viewport `resize` and `scroll` events with passive handlers to keep bounding box overlays pixel-aligned during dynamic mobile device rotation.
+
+---
 
 ---
 
