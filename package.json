@@ -1,0 +1,67 @@
+{
+  "name": "dom-swarm",
+  "version": "1.0.0",
+  "description": "Universal plug-and-play autonomous cursor swarm that reverse-engineers and constructs DOM elements live using Boids physics.",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "unpkg": "./dist/index.global.js",
+  "jsdelivr": "./dist/index.global.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "ARCHITECTURE.md",
+    "TASKS.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "serve": "node scripts/serve.js",
+    "demo": "npm run build && node scripts/serve.js",
+    "clean": "rimraf dist"
+  },
+  "keywords": [
+    "cursor",
+    "swarm",
+    "boids",
+    "figma",
+    "animation",
+    "dom",
+    "visual-effects",
+    "particles",
+    "simulation",
+    "typescript",
+    "zero-dependency",
+    "creative-coding",
+    "page-builder"
+  ],
+  "author": "Dom Swarm Authors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dom-swarm/dom-swarm"
+  },
+  "bugs": {
+    "url": "https://github.com/dom-swarm/dom-swarm/issues"
+  },
+  "homepage": "https://github.com/dom-swarm/dom-swarm#readme",
+  "sideEffects": false,
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "tsup": "^8.3.6",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Swarm — Run a thousand agents as one</title>
+  <style>
+    :root {
+      --bg: #fcfcfd;
+      --grid: rgba(0, 0, 0, 0.035);
+      --text-main: #111827;
+      --text-muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #00a8ff;
+      --dark-card: #131416;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      background-image:
+        linear-gradient(to right, var(--grid) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+      background-size: 40px 40px;
+      color: var(--text-main);
+      font-family: var(--font);
+      line-height: 1.5;
+      overflow-x: hidden;
+      min-height: 100vh;
+      position: relative;
+    }
+
+    /* Initial Hero: Center 'S' Logo with Orbiting Cursors (frame 001) */
+    .swarm-initial-hero {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      user-select: none;
+    }
+
+    .swarm-center-logo {
+      width: 90px;
+      height: 90px;
+      background: #e5e7eb;
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+      margin-bottom: 24px;
+    }
+
+    .scroll-hint {
+      font-size: 14px;
+      color: var(--text-muted);
+      font-family: var(--font);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      animation: float-hint 1.8s infinite ease-in-out;
+    }
+
+    @keyframes float-hint {
+      0%, 100% { transform: translateY(0); opacity: 0.7; }
+      50% { transform: translateY(6px); opacity: 1; }
+    }
+
+    /* Page Container */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 32px;
+      position: relative;
+    }
+
+    /* Header Navbar */
+    header.navbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 24px 0;
+      border-bottom: 1px solid var(--border);
+      background: rgba(252, 252, 253, 0.8);
+      backdrop-filter: blur(8px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+      font-size: 19px;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-icon {
+      width: 24px;
+      height: 24px;
+      background: #111827;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 900;
+      font-size: 14px;
+    }
+
+    nav.nav-links {
+      display: flex;
+      gap: 32px;
+    }
+
+    nav.nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+
+    nav.nav-links a:hover {
+      color: var(--text-main);
+    }
+
+    .btn-get-access {
+      background: #111827;
+      color: #ffffff;
+      border: none;
+      padding: 9px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+    }
+
+    /* Section 1: Hero & Terminal */
+    .hero-section {
+      padding: 80px 0 100px;
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 60px;
+      align-items: center;
+    }
+
+    .hero-content h1 {
+      font-size: 56px;
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -1.8px;
+      margin-bottom: 22px;
+      color: #111827;
+    }
+
+    .hero-content p {
+      font-size: 19px;
+      color: var(--text-muted);
+      margin-bottom: 34px;
+      line-height: 1.5;
+    }
+
+    .hero-buttons {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .btn-primary {
+      background: #111827;
+      color: #ffffff;
+      border: none;
+      padding: 13px 26px;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+    }
+
+    .btn-secondary {
+      background: #ffffff;
+      color: #111827;
+      border: 1px solid var(--border);
+      padding: 13px 22px;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    /* Right Column Cards (video frame 005) */
+    .hero-visual {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .terminal-card {
+      background: var(--dark-card);
+      border-radius: 14px;
+      padding: 24px;
+      color: #ffffff;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
+      font-family: var(--mono);
+      font-size: 14px;
+    }
+
+    .terminal-title {
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+
+    .terminal-sub {
+      color: #9ca3af;
+      font-size: 12px;
+    }
+
+    .replica-card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.04);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .replica-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #00a8ff;
+    }
+
+    /* Section 2: One file describes the whole swarm (video frame 010) */
+    .feature-section {
+      padding: 110px 0;
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: 1fr 1.1fr;
+      gap: 60px;
+      align-items: center;
+    }
+
+    .feature-text h2 {
+      font-size: 42px;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -1.2px;
+      margin-bottom: 18px;
+    }
+
+    .feature-text p {
+      font-size: 17px;
+      color: var(--text-muted);
+      margin-bottom: 28px;
+    }
+
+    .spec-terminal {
+      background: var(--dark-card);
+      border-radius: 14px;
+      padding: 28px;
+      color: #ffffff;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.7;
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.2);
+      min-height: 280px;
+    }
+
+    .spec-header {
+      color: #6b7280;
+      margin-bottom: 14px;
+      font-size: 12px;
+    }
+
+    .spec-line-kw { color: #00a8ff; font-weight: 700; }
+    .spec-line-str { color: #10b981; }
+
+    /* Section 3: Pricing & Built by 36 agents card (video frame 015 & 020) */
+    .pricing-section {
+      padding: 110px 0 80px;
+      border-top: 1px solid var(--border);
+    }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-bottom: 90px;
+    }
+
+    .pricing-card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 32px;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.03);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .pricing-card h3 {
+      font-size: 24px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .pricing-sub {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      font-family: var(--mono);
+    }
+
+    .pricing-desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    .pricing-features {
+      list-style: none;
+      margin-bottom: 30px;
+      flex-grow: 1;
+    }
+
+    .pricing-features li {
+      font-size: 13px;
+      color: #374151;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pricing-features li::before {
+      content: "✓";
+      color: #00a8ff;
+      font-weight: 800;
+    }
+
+    .btn-pricing {
+      background: #111827;
+      color: #ffffff;
+      border: none;
+      padding: 11px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 7px;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    /* Final Card Section */
+    .finale-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 50px;
+      align-items: center;
+      padding: 60px 0 120px;
+    }
+
+    .finale-left h2 {
+      font-size: 44px;
+      font-weight: 800;
+      letter-spacing: -1.2px;
+      margin-bottom: 16px;
+    }
+
+    .finale-left p {
+      font-size: 17px;
+      color: var(--text-muted);
+      margin-bottom: 28px;
+    }
+
+    .built-by-card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 36px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+    }
+
+    .built-by-tag {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: #7b61ff;
+      font-weight: 700;
+      margin-bottom: 12px;
+      display: block;
+    }
+
+    .built-by-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: #111827;
+      line-height: 1.4;
+    }
+
+    .built-by-desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 60px 0 100px;
+      font-size: 13px;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .footer-col {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .footer-col-title {
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 4px;
+    }
+
+    .footer-col a {
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+
+    .footer-col a:hover {
+      color: #111827;
+    }
+
+    /* Minimal Replay Button at bottom */
+    .replay-dock {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 10000;
+    }
+
+    .btn-replay-pill {
+      background: #111827;
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 10px 18px;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 30px;
+      cursor: pointer;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: transform 0.15s ease;
+    }
+
+    .btn-replay-pill:hover {
+      transform: translateY(-2px);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Screen 1 (Initial): Center 'S' Logo with Orbiting Cursors (video frame 001) -->
+  <section class="swarm-initial-hero" id="swarmCenterLogo">
+    <div class="swarm-center-logo">
+      <svg width="44" height="44" viewBox="0 0 100 100" fill="none">
+        <path d="M68 34H32C27.5817 34 24 37.5817 24 42V42C24 46.4183 27.5817 50 32 50H68C72.4183 50 76 53.5817 76 58V58C76 62.4183 72.4183 66 68 66H32" stroke="#9ca3af" stroke-width="12" stroke-linecap="round" />
+      </svg>
+    </div>
+    <div class="scroll-hint">
+      <span>Scroll down to watch 36 autonomous agents build this page</span>
+      <span>↓</span>
+    </div>
+  </section>
+
+  <!-- Main Website Body: Constructed strictly as user scrolls (video frames 005 - 020) -->
+  <div class="container">
+
+    <!-- Header Navbar -->
+    <header class="navbar swarm-item">
+      <div class="logo">
+        <div class="logo-icon">S</div>
+        <span>Swarm</span>
+      </div>
+      <nav class="nav-links">
+        <a href="#product" class="swarm-item">Product</a>
+        <a href="#agents" class="swarm-item">Agents</a>
+        <a href="#docs" class="swarm-item">Docs</a>
+        <a href="#pricing" class="swarm-item">Pricing</a>
+      </nav>
+      <button class="btn-get-access swarm-item">Get access</button>
+    </header>
+
+    <!-- Section 1: Hero & Terminal -->
+    <section class="hero-section" id="product">
+      <div class="hero-content">
+        <h1 class="swarm-item">Run a thousand agents as one.</h1>
+        <p class="swarm-item">
+          Swarm schedules, routes and coordinates autonomous AI agents across your cloud infrastructure with microsecond latency.
+        </p>
+        <div class="hero-buttons">
+          <button class="btn-primary swarm-item">Start building</button>
+          <button class="btn-secondary swarm-item">Documentation</button>
+        </div>
+      </div>
+
+      <div class="hero-visual">
+        <div class="terminal-card swarm-card swarm-item">
+          <div class="terminal-title">swarm.dispatch(task)</div>
+          <div class="terminal-sub">orchestrator · 18 tasks queued</div>
+        </div>
+        <div class="replica-card swarm-card swarm-item">
+          <div class="replica-dot"></div>
+          <span>agent/research + · 12 replicas</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: Declarative Spec -->
+    <section class="feature-section" id="agents">
+      <div class="feature-text">
+        <h2 class="swarm-item">One file describes the whole swarm.</h2>
+        <p class="swarm-item">
+          One declarative file sets you up with full observability, dynamic routing, edge isolation, and automatic scaling.
+        </p>
+        <button class="btn-secondary swarm-item">Read the spec</button>
+      </div>
+
+      <div class="spec-terminal swarm-card swarm-item">
+        <div class="spec-header"># swarm.yaml</div>
+        <div><span class="spec-line-kw">swarm:</span> launch-workers</div>
+        <div><span class="spec-line-kw">agents:</span></div>
+        <div>&nbsp;&nbsp;- <span class="spec-line-kw">name:</span> <span class="spec-line-str">research</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="spec-line-kw">replicas:</span> 12</div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="spec-line-kw">model:</span> claude-3-5-sonnet</div>
+        <div>&nbsp;&nbsp;- <span class="spec-line-kw">name:</span> <span class="spec-line-str">builder</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="spec-line-kw">replicas:</span> 24</div>
+      </div>
+    </section>
+
+    <!-- Section 3: Pricing Cards -->
+    <section class="pricing-section" id="pricing">
+      <div class="pricing-grid">
+        <div class="pricing-card swarm-card swarm-item">
+          <h3>Free forever</h3>
+          <div class="pricing-sub">$0 / month</div>
+          <p class="pricing-desc">For tinkering with your first swarm on a weekend project.</p>
+          <ul class="pricing-features">
+            <li>Up to 10 agents</li>
+            <li>Community support</li>
+            <li>7-day trace history</li>
+          </ul>
+          <button class="btn-pricing swarm-item">Start free</button>
+        </div>
+
+        <div class="pricing-card swarm-card swarm-item">
+          <h3>Team</h3>
+          <div class="pricing-sub">$49 / month</div>
+          <p class="pricing-desc">For growing teams running autonomous pipelines in production.</p>
+          <ul class="pricing-features">
+            <li>Up to 100 agents</li>
+            <li>Priority routing</li>
+            <li>30-day trace history</li>
+          </ul>
+          <button class="btn-pricing swarm-item">Start free</button>
+        </div>
+
+        <div class="pricing-card swarm-card swarm-item">
+          <h3>Enterprise</h3>
+          <div class="pricing-sub">Custom</div>
+          <p class="pricing-desc">Dedicated infrastructure and compliance for large scale swarms.</p>
+          <ul class="pricing-features">
+            <li>Unlimited agents</li>
+            <li>Dedicated VPC cluster</li>
+            <li>24/7 SLA & support</li>
+          </ul>
+          <button class="btn-pricing swarm-item">Start free</button>
+        </div>
+      </div>
+
+      <!-- Finale Section (video frame 015 & 020) -->
+      <div class="finale-section">
+        <div class="finale-left">
+          <h2 class="swarm-item">Let the swarm build it.</h2>
+          <p class="swarm-item">
+            Start with ten agents for free. Scale to ten thousand when you're ready.
+          </p>
+          <button class="btn-primary swarm-item">Start building</button>
+        </div>
+
+        <div class="built-by-card swarm-card swarm-item">
+          <span class="built-by-tag">✦ LIVE CONSTRUCTION COMPLETE</span>
+          <div class="built-by-title">
+            This page was built by 36 agents while you scrolled.
+          </div>
+          <div class="built-by-desc">
+            Every line, guide and word above was placed by a cursor working alongside the others.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+      <div>
+        <div class="logo" style="margin-bottom: 12px;">
+          <div class="logo-icon">S</div>
+          <span>Swarm</span>
+        </div>
+        <p>© 2026 Swarm Labs, Inc.</p>
+      </div>
+
+      <div class="footer-col">
+        <div class="footer-col-title">Product</div>
+        <a href="#">Product</a>
+        <a href="#">Agents</a>
+        <a href="#">Routing</a>
+        <a href="#">Pricing</a>
+      </div>
+
+      <div class="footer-col">
+        <div class="footer-col-title">Company</div>
+        <a href="#">About</a>
+        <a href="#">Careers</a>
+        <a href="#">Blog</a>
+      </div>
+
+      <div class="footer-col">
+        <div class="footer-col-title">Developers</div>
+        <a href="#">Docs</a>
+        <a href="#">API reference</a>
+        <a href="#">Status</a>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Replay Button Dock -->
+  <div class="replay-dock">
+    <button class="btn-replay-pill" id="btnReplay">
+      <span>↺ Replay Swarm Scroll</span>
+    </button>
+  </div>
+
+  <!-- Load bundled dom-swarm -->
+  <script src="../dist/index.global.js"></script>
+  <script>
+    let swarm = null;
+
+    window.addEventListener('DOMContentLoaded', () => {
+      if (typeof DomSwarm !== 'undefined' && DomSwarm.enableSwarm) {
+        swarm = DomSwarm.enableSwarm({
+          agentCount: 36,
+          buildOnScroll: true,
+          hideOnStart: true,
+          showRulers: true,
+          showGuides: true,
+          showDimensions: true,
+          showAgentNames: false, // Clean cursors without names
+          typewriterEffect: true,
+          vanishAtCursor: true,
+          concurrency: 12,
+          buildDuration: 850
+        });
+      }
+
+      document.getElementById('btnReplay').addEventListener('click', () => {
+        swarm?.replay();
+      });
+    });
+  </script>
+</body>
+</html>
