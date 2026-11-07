@@ -8,7 +8,7 @@ import {
 } from '../types';
 import { Agent } from './Agent';
 import { BoidsPhysics } from './BoidsPhysics';
-import { OverlayManager, ActiveRulerSegment } from '../dom/OverlayManager';
+import { OverlayManager, ActiveRulerSegment, BoxRect } from '../dom/OverlayManager';
 import { BuilderEffects } from '../dom/BuilderEffects';
 import { DomScanner } from '../dom/DomScanner';
 import { vec, dist, randomRange } from '../utils/math';
@@ -16,12 +16,13 @@ import { vec, dist, randomRange } from '../utils/math';
 interface ActiveTask {
   id: string;
   element: HTMLElement;
-  rect: DOMRect;
+  fullRect: BoxRect;
+  currentRect: BoxRect;
   boxType: BoundingBoxType;
   assignedAgents: Agent[];
   targetPositions: Vector2D[];
-  cornerRoles: ('tl' | 'br' | 'tr' | 'bl' | 'ibeam')[];
-  phase: 'NAVIGATING' | 'BUILDING' | 'DONE';
+  cornerRoles: ('tl' | 'br' | 'tr' | 'bl' | 'mt' | 'mb' | 'badge' | 'ibeam')[];
+  phase: 'NAVIGATING' | 'DRAWING' | 'BUILDING' | 'DONE';
   phaseStartTime: number;
   boxElement: HTMLElement | null;
   isText: boolean;
@@ -39,16 +40,16 @@ const DEFAULT_CONFIG: ResolvedSwarmConfig = {
   showGuides: true,
   showDimensions: true,
   typewriterEffect: true,
-  concurrency: 12,
+  concurrency: 1, // Sequential one-by-one element construction
   vanishAtCursor: true,
   buildOrder: 'top-to-bottom',
   showAgentNames: false,
   followMouse: true,
-  maxSpeed: 9.5,
-  maxForce: 0.4,
-  buildDuration: 850,
+  maxSpeed: 10.0,
+  maxForce: 0.45,
+  buildDuration: 450,
   flockRadius: 85,
-  separateDistance: 32,
+  separateDistance: 55,
   mouseAttractRadius: 220,
   mouseAttractForce: 0.45,
   typewriterSpeed: 16,
@@ -252,8 +253,10 @@ export class SwarmEngine implements DomSwarmInstance {
   private onScroll = (): void => {
     const scrollY = window.scrollY || window.pageYOffset || 0;
 
-    if (!this.hasUserScrolled && scrollY > 20) {
+    if (!this.hasUserScrolled && scrollY > 5) {
       this.hasUserScrolled = true;
+      const intro = document.getElementById('swarmCenterLogo') || document.getElementById('introLogo');
+      if (intro) intro.classList.add('gone');
       if (this.config.showRulers) {
         this.overlayManager.setRulersVisible(true);
       }
@@ -317,13 +320,8 @@ export class SwarmEngine implements DomSwarmInstance {
       };
 
       const scrollY = window.scrollY || 0;
-      let focalTarget: Vector2D | null = null;
-
-      if (!this.hasUserScrolled && scrollY < 20) {
-        focalTarget = this.initialLogoCenter || vec(viewport.width / 2, viewport.height / 2);
-      } else if (this.isMouseActive && this.mousePos) {
-        focalTarget = this.mousePos;
-      }
+      const timeSeconds = timestamp / 1000;
+      const activeList = Array.from(this.activeTasks.values());
 
       // Update agent physics and transforms
       for (let i = 0; i < this.agents.length; i++) {
@@ -331,12 +329,34 @@ export class SwarmEngine implements DomSwarmInstance {
         if (!agent || agent.state === 'VANISHED') continue;
 
         if (agent.state === 'IDLE_FLOCKING' || agent.state === 'RETURNING_TO_SWARM') {
+          let agentFocal: Vector2D | null = null;
+          if (!this.hasUserScrolled && scrollY < 5) {
+            agentFocal = this.initialLogoCenter || vec(viewport.width / 2, viewport.height / 2);
+          } else if (this.isMouseActive && this.mousePos) {
+            agentFocal = this.mousePos;
+          } else if (activeList.length > 0) {
+            const task = activeList[i % activeList.length];
+            if (task) {
+              agentFocal = vec(
+                task.currentRect.left + task.currentRect.width / 2,
+                task.currentRect.top + task.currentRect.height / 2
+              );
+            }
+          } else if (this.buildQueue.length > 0 && this.buildQueue[0]) {
+            const nextEl = this.buildQueue[0];
+            const r = nextEl.getBoundingClientRect();
+            agentFocal = vec(r.left + r.width / 2, r.top + r.height / 2);
+          } else {
+            agentFocal = vec(viewport.width / 2, viewport.height / 2);
+          }
+
           const force = BoidsPhysics.calculateFlockingForces(
             agent,
             this.agents,
-            focalTarget,
+            agentFocal,
             this.config,
-            viewport
+            viewport,
+            timeSeconds
           );
           agent.applyForce(force);
 
@@ -375,7 +395,7 @@ export class SwarmEngine implements DomSwarmInstance {
   };
 
   /**
-   * Advances active construction tasks through NAVIGATING -> BUILDING -> DONE phases.
+   * Advances active construction tasks through NAVIGATING -> DRAWING -> BUILDING -> DONE phases.
    */
   private updateActiveTasks(timestamp: number): void {
     if (this.activeTasks.size === 0) return;
@@ -386,33 +406,119 @@ export class SwarmEngine implements DomSwarmInstance {
         for (let i = 0; i < task.assignedAgents.length; i++) {
           const a = task.assignedAgents[i];
           const target = task.targetPositions[i] || task.targetPositions[0];
-          if (a && target && dist(a.position, target) < 40) {
+          if (a && target && dist(a.position, target) < 45) {
             hasArrived = true;
             break;
           }
         }
 
         const elapsed = timestamp - task.phaseStartTime;
-        if (hasArrived || elapsed > 300) {
-          // Cursors arrived at target bounds: SPAWN THE FIGMA BOUNDING BOX & GUIDES!
-          task.phase = 'BUILDING';
+        if (hasArrived || elapsed > 250) {
+          // Cursors reached origin: START LIVE DIAGONAL BOX DRAWING!
+          task.phase = 'DRAWING';
           task.phaseStartTime = timestamp;
-          task.rect = task.element.getBoundingClientRect();
+          const liveRect = task.element.getBoundingClientRect();
+          task.fullRect = liveRect;
+          task.currentRect = {
+            left: liveRect.left,
+            top: liveRect.top,
+            width: 12,
+            height: 12,
+          };
 
           task.boxElement = this.overlayManager.createBoundingBox(
             task.id,
-            task.rect,
+            task.currentRect,
             task.boxType,
             this.config.showDimensions,
             this.config.showGuides
           );
+
+          if (this.config.showRulers) {
+            this.overlayManager.setRulersVisible(true);
+          }
+        }
+      } else if (task.phase === 'DRAWING') {
+        const elapsed = timestamp - task.phaseStartTime;
+        const drawDuration = 220; // 220ms fast diagonal drag
+        const progress = Math.min(elapsed / drawDuration, 1);
+        const ease = 1 - Math.pow(1 - progress, 3); // Ease out cubic
+
+        const liveRect = task.element.getBoundingClientRect();
+        task.fullRect = liveRect;
+
+        const curW = Math.max(12, ease * liveRect.width);
+        const curH = Math.max(12, ease * liveRect.height);
+
+        task.currentRect = {
+          left: liveRect.left,
+          top: liveRect.top,
+          width: curW,
+          height: curH,
+        };
+
+        if (task.boxElement) {
+          this.overlayManager.updateBoundingBox(task.boxElement, task.currentRect, task.id);
+        }
+
+        // DRAG AGENTS WITH THE EXPANDING BOX:
+        task.assignedAgents.forEach((agent, i) => {
+          const role = task.cornerRoles[i] || (i === 0 ? 'tl' : 'br');
+          let targetX = liveRect.left;
+          let targetY = liveRect.top;
+          let heading = -20;
+
+          if (role === 'tl') {
+            targetX = liveRect.left;
+            targetY = liveRect.top;
+            heading = -20;
+          } else if (role === 'br') {
+            targetX = liveRect.left + curW;
+            targetY = liveRect.top + curH;
+            heading = -45;
+          } else if (role === 'tr') {
+            targetX = liveRect.left + curW;
+            targetY = liveRect.top;
+            heading = -65;
+          } else if (role === 'bl') {
+            targetX = liveRect.left;
+            targetY = liveRect.top + curH;
+            heading = 25;
+          } else if (role === 'mt') {
+            targetX = liveRect.left + curW / 2;
+            targetY = liveRect.top;
+            heading = -30;
+          } else if (role === 'mb') {
+            targetX = liveRect.left + curW / 2;
+            targetY = liveRect.top + curH;
+            heading = 30;
+          } else if (role === 'badge') {
+            targetX = liveRect.left + curW / 2;
+            targetY = liveRect.top + curH + 16;
+            heading = 0;
+          } else if (role === 'ibeam') {
+            targetX = liveRect.left + 8;
+            targetY = liveRect.top + curH / 2;
+            heading = 0;
+          }
+
+          agent.position.x = targetX;
+          agent.position.y = targetY;
+          agent.velocity = vec(0, 0);
+          agent.acceleration = vec(0, 0);
+          agent.headingAngle = heading;
+        });
+
+        if (progress >= 1) {
+          // Drawing complete! Now reveal element content while cursors hold handles
+          task.phase = 'BUILDING';
+          task.phaseStartTime = timestamp;
 
           task.assignedAgents.forEach((a) => {
             a.setConstructing();
             this.config.onAgentStateChange?.(a.id, 'CONSTRUCTING_ELEMENT');
           });
 
-          // Trigger typewriter or block scale-in reveal
           task.cancelReveal = this.builderEffects.executeReveal(
             task.element,
             task.isText,
@@ -435,21 +541,20 @@ export class SwarmEngine implements DomSwarmInstance {
 
     // Only construct elements if the user has started scrolling
     const scrollY = window.scrollY || window.pageYOffset || 0;
-    if (!this.hasUserScrolled && scrollY < 20) return;
+    if (!this.hasUserScrolled && scrollY < 5) return;
 
-    // Pick elements that are currently visible or near viewport as long as concurrency and idle agents allow
-    while (this.activeTasks.size < this.config.concurrency && this.buildQueue.length > 0) {
+    // STRICTLY ONE-BY-ONE: Never build multiple elements simultaneously if concurrency is 1
+    if (this.activeTasks.size >= this.config.concurrency) return;
+
+    while (this.buildQueue.length > 0) {
       const visibleIndex = this.buildQueue.findIndex((el) => this.isElementInScrollWindow(el));
-      if (visibleIndex < 0) break; // Do not automatically build elements that are far off screen!
-
-      const idleAgents = this.agents.filter(
-        (a) => a.state === 'IDLE_FLOCKING' || a.state === 'RETURNING_TO_SWARM'
-      ).length;
-      if (idleAgents === 0) break; // Wait until active agents finish current elements!
+      if (visibleIndex < 0) break; // Next elements are not visible yet! Wait for user scroll!
 
       const nextElement = this.buildQueue.splice(visibleIndex, 1)[0];
       if (nextElement && !this.completedElements.has(nextElement)) {
         this.constructElement(nextElement);
+        // STRICTLY ONE AT A TIME: Launch this element, then wait for it to finish!
+        break;
       }
     }
 
@@ -473,26 +578,25 @@ export class SwarmEngine implements DomSwarmInstance {
     return (
       rect.bottom > -40 &&
       rect.right > 0 &&
-      rect.top < vHeight + 150 &&
+      rect.top < vHeight + 180 &&
       rect.left < vWidth
     );
   }
 
   /**
    * Determines how many agents should construct a given element.
-   * Large blocks receive 4 agents (one for each corner: TL, BR, TR, BL).
-   * Medium blocks receive 2 agents (TL, BR).
-   * Text nodes receive 1 or 2 agents (I-beam typing + optional corner).
+   * Large blocks receive 7 agents (4 corners, 2 edges, 1 badge).
+   * Text nodes receive 4 agents (I-beam typing, TL, BR, badge).
    */
   private getRequiredAgentCount(isText: boolean, rect: DOMRect): number {
     if (isText) {
-      return rect.width > 260 ? 2 : 1;
+      return 4; // 1 ibeam + 1 tl + 1 br + 1 badge
     }
     // Block element: cards, terminals, pricing cards, hero container, code blocks
-    if (rect.width >= 140 && rect.height >= 55) {
-      return 4; // 4 corners: TL, BR, TR, BL
+    if (rect.width >= 120 && rect.height >= 40) {
+      return 7; // tl, br, tr, bl, mt, mb, badge
     }
-    return 2; // 2 corners: TL, BR
+    return 4; // tl, br, tr, bl
   }
 
   /**
@@ -526,18 +630,24 @@ export class SwarmEngine implements DomSwarmInstance {
     }
 
     // Assign corner/edge roles to agents
-    const cornerRoles: ('tl' | 'br' | 'tr' | 'bl' | 'ibeam')[] = [];
+    const cornerRoles: ('tl' | 'br' | 'tr' | 'bl' | 'mt' | 'mb' | 'badge' | 'ibeam')[] = [];
     const targets: Vector2D[] = [];
 
     if (isText) {
       cornerRoles.push('ibeam');
       targets.push(vec(rect.left + 8, rect.top + rect.height / 2));
-      if (assigned.length > 1) {
-        cornerRoles.push('br');
-        targets.push(vec(rect.right, rect.bottom));
+      cornerRoles.push('tl');
+      targets.push(vec(rect.left, rect.top));
+      cornerRoles.push('br');
+      targets.push(vec(rect.right, rect.bottom));
+      if (assigned.length > 3) {
+        cornerRoles.push('badge');
+        targets.push(vec(rect.left + rect.width / 2, rect.bottom + 16));
       }
     } else {
-      const allRoles: ('tl' | 'br' | 'tr' | 'bl')[] = ['tl', 'br', 'tr', 'bl'];
+      const allRoles: ('tl' | 'br' | 'tr' | 'bl' | 'mt' | 'mb' | 'badge')[] = [
+        'tl', 'br', 'tr', 'bl', 'mt', 'mb', 'badge'
+      ];
       for (let i = 0; i < assigned.length; i++) {
         const role = allRoles[i] || 'br';
         cornerRoles.push(role);
@@ -545,13 +655,22 @@ export class SwarmEngine implements DomSwarmInstance {
         else if (role === 'br') targets.push(vec(rect.right, rect.bottom));
         else if (role === 'tr') targets.push(vec(rect.right, rect.top));
         else if (role === 'bl') targets.push(vec(rect.left, rect.bottom));
+        else if (role === 'mt') targets.push(vec(rect.left + rect.width / 2, rect.top));
+        else if (role === 'mb') targets.push(vec(rect.left + rect.width / 2, rect.bottom));
+        else if (role === 'badge') targets.push(vec(rect.left + rect.width / 2, rect.bottom + 16));
       }
     }
 
     const task: ActiveTask = {
       id: taskId,
       element,
-      rect,
+      fullRect: rect,
+      currentRect: {
+        left: rect.left,
+        top: rect.top,
+        width: 12,
+        height: 12,
+      },
       boxType,
       assignedAgents: assigned,
       targetPositions: targets,
@@ -564,7 +683,7 @@ export class SwarmEngine implements DomSwarmInstance {
 
     this.activeTasks.set(taskId, task);
 
-    // Dispatch cursors directly to edges and corners with speed boost
+    // Dispatch cursors directly to origin with speed boost
     assigned.forEach((agent, idx) => {
       const targetCoord = targets[idx] || elementCenter;
       const isIBeamRole = isText && cornerRoles[idx] === 'ibeam';
@@ -626,17 +745,24 @@ export class SwarmEngine implements DomSwarmInstance {
     const rulerSegments: ActiveRulerSegment[] = [];
 
     this.activeTasks.forEach((task) => {
-      const rect = task.element.getBoundingClientRect();
-      task.rect = rect;
+      const liveRect = task.element.getBoundingClientRect();
+      task.fullRect = liveRect;
 
       if (task.phase === 'BUILDING') {
+        task.currentRect = {
+          left: liveRect.left,
+          top: liveRect.top,
+          width: liveRect.width,
+          height: liveRect.height,
+        };
+
         if (task.boxElement) {
-          this.overlayManager.updateBoundingBox(task.boxElement, rect, task.id);
+          this.overlayManager.updateBoundingBox(task.boxElement, task.currentRect, task.id);
           rulerSegments.push({
-            left: rect.left,
-            width: rect.width,
-            top: rect.top,
-            height: rect.height,
+            left: task.currentRect.left,
+            width: task.currentRect.width,
+            top: task.currentRect.top,
+            height: task.currentRect.height,
           });
         }
 
@@ -644,35 +770,47 @@ export class SwarmEngine implements DomSwarmInstance {
         const elapsed = performance.now() - task.phaseStartTime;
         task.assignedAgents.forEach((agent, i) => {
           const role = task.cornerRoles[i] || (i === 0 ? 'tl' : 'br');
-          let targetX = rect.left;
-          let targetY = rect.top;
+          let targetX = liveRect.left;
+          let targetY = liveRect.top;
           let heading = -20;
 
           if (role === 'tl') {
-            targetX = rect.left;
-            targetY = rect.top;
+            targetX = liveRect.left;
+            targetY = liveRect.top;
             heading = -20;
           } else if (role === 'br') {
-            targetX = rect.right;
-            targetY = rect.bottom;
+            targetX = liveRect.right;
+            targetY = liveRect.bottom;
             heading = -45;
           } else if (role === 'tr') {
-            targetX = rect.right;
-            targetY = rect.top;
+            targetX = liveRect.right;
+            targetY = liveRect.top;
             heading = -65;
           } else if (role === 'bl') {
-            targetX = rect.left;
-            targetY = rect.bottom;
+            targetX = liveRect.left;
+            targetY = liveRect.bottom;
             heading = 25;
+          } else if (role === 'mt') {
+            targetX = liveRect.left + liveRect.width / 2;
+            targetY = liveRect.top;
+            heading = -30;
+          } else if (role === 'mb') {
+            targetX = liveRect.left + liveRect.width / 2;
+            targetY = liveRect.bottom;
+            heading = 30;
+          } else if (role === 'badge') {
+            targetX = liveRect.left + liveRect.width / 2;
+            targetY = liveRect.bottom + 16;
+            heading = 0;
           } else if (role === 'ibeam') {
             const buildDur = Math.max(this.config.buildDuration, 100);
             const progress = Math.min(elapsed / (buildDur * 0.75), 1);
             const textWidth = Math.min(
-              rect.width - 16,
+              liveRect.width - 16,
               Math.max(30, (task.element.textContent?.length || 10) * 8)
             );
-            targetX = rect.left + 8 + progress * textWidth;
-            targetY = rect.top + rect.height / 2;
+            targetX = liveRect.left + 8 + progress * textWidth;
+            targetY = liveRect.top + liveRect.height / 2;
             heading = 0;
           }
 
@@ -682,29 +820,17 @@ export class SwarmEngine implements DomSwarmInstance {
           agent.acceleration = vec(0, 0);
           agent.headingAngle = heading;
         });
+      } else if (task.phase === 'DRAWING') {
+        rulerSegments.push({
+          left: task.currentRect.left,
+          width: task.currentRect.width,
+          top: task.currentRect.top,
+          height: task.currentRect.height,
+        });
       } else if (task.phase === 'NAVIGATING') {
-        // Keep targetPositions updated with live rect during scroll navigation
+        // Keep targetPositions updated with live rect origin during scroll navigation
         task.assignedAgents.forEach((_, i) => {
-          const role = task.cornerRoles[i] || (i === 0 ? 'tl' : 'br');
-          let targetX = rect.left;
-          let targetY = rect.top;
-          if (role === 'tl') {
-            targetX = rect.left;
-            targetY = rect.top;
-          } else if (role === 'br') {
-            targetX = rect.right;
-            targetY = rect.bottom;
-          } else if (role === 'tr') {
-            targetX = rect.right;
-            targetY = rect.top;
-          } else if (role === 'bl') {
-            targetX = rect.left;
-            targetY = rect.bottom;
-          } else if (role === 'ibeam') {
-            targetX = rect.left + 8;
-            targetY = rect.top + rect.height / 2;
-          }
-          task.targetPositions[i] = vec(targetX, targetY);
+          task.targetPositions[i] = vec(liveRect.left, liveRect.top);
         });
       }
     });
@@ -764,6 +890,9 @@ export class SwarmEngine implements DomSwarmInstance {
     if (this.destroyed) return;
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    const intro = document.getElementById('swarmCenterLogo') || document.getElementById('introLogo');
+    if (intro) intro.classList.remove('gone');
 
     this.activeTasks.forEach((task) => {
       task.cancelReveal?.();

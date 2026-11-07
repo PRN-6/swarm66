@@ -37,15 +37,26 @@
       position: relative;
     }
 
-    /* Initial Hero: Center 'S' Logo with Orbiting Cursors (frame 001) */
+    /* Initial Fixed Center Intro Logo (video frame 001) */
     .swarm-initial-hero {
-      height: 100vh;
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      position: relative;
+      pointer-events: none;
+      z-index: 50;
       user-select: none;
+      transition: opacity 0.35s ease, transform 0.35s ease;
+    }
+
+    .swarm-initial-hero.gone {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.92);
+      pointer-events: none;
     }
 
     .swarm-center-logo {
@@ -90,8 +101,7 @@
       justify-content: space-between;
       padding: 24px 0;
       border-bottom: 1px solid var(--border);
-      background: rgba(252, 252, 253, 0.8);
-      backdrop-filter: blur(8px);
+      background: #fcfcfd;
       position: sticky;
       top: 0;
       z-index: 10;
@@ -687,9 +697,10 @@
           showAgentNames: false, // Clean cursors without names
           typewriterEffect: true,
           vanishAtCursor: true,
-          concurrency: 12,
-          buildDuration: 850
+          concurrency: 1, // Sequential one-by-one element construction
+          buildDuration: 450 // Snappy 450ms reveal per element
         });
+        window.swarm = swarm;
       }
 
       document.getElementById('btnReplay').addEventListener('click', () => {

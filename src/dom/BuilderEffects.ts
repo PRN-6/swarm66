@@ -48,7 +48,7 @@ export class BuilderEffects {
     const originalPointerEvents = element.style.pointerEvents;
 
     element.style.opacity = '0';
-    element.style.transform = 'scale(0.96)';
+    element.style.transform = 'scale(0.97)';
     element.style.transition = 'none';
     element.style.pointerEvents = 'none';
 
@@ -79,7 +79,12 @@ export class BuilderEffects {
 
     if (isText && enableTypewriter && BuilderEffects.isTextElement(element)) {
       // Typewriter Effect
-      const originalText = element.textContent || '';
+      const rawText = element.textContent || '';
+      const cleanText = rawText.replace(/\s+/g, ' ').trim();
+      const initialRect = element.getBoundingClientRect();
+      if (initialRect.height > 10) {
+        element.style.minHeight = `${initialRect.height}px`;
+      }
       element.textContent = '';
       element.style.opacity = '1';
       element.style.transform = 'scale(1)';
@@ -87,30 +92,30 @@ export class BuilderEffects {
 
       const charDelay = Math.max(
         10,
-        Math.floor((durationMs * 0.75) / Math.max(originalText.length, 1))
+        Math.floor((durationMs * 0.72) / Math.max(cleanText.length, 1))
       );
       let charIndex = 0;
 
       const typeNextChar = () => {
         if (cancelled) return;
 
-        if (charIndex < originalText.length) {
-          element.textContent = originalText.slice(0, charIndex + 1);
+        if (charIndex < cleanText.length) {
+          element.textContent = cleanText.slice(0, charIndex + 1);
           charIndex++;
           timerId = setTimeout(typeNextChar, charDelay);
         } else {
-          element.textContent = originalText;
+          element.textContent = cleanText;
           this.cleanupElement(element);
           onComplete();
         }
       };
 
-      timerId = setTimeout(typeNextChar, 50);
+      timerId = setTimeout(typeNextChar, 30);
 
       const cancel = () => {
         cancelled = true;
         if (timerId) clearTimeout(timerId);
-        element.textContent = originalText;
+        element.textContent = rawText;
         this.cleanupElement(element);
       };
 
@@ -145,29 +150,29 @@ export class BuilderEffects {
   }
 
   /**
-   * Cleans up temporary inline styles applied during animation.
+   * Cleans up temporary styles on an element after reveal completion.
    */
-  private cleanupElement(element: HTMLElement): void {
+  public cleanupElement(element: HTMLElement): void {
+    element.style.minHeight = '';
     element.style.transition = '';
-    element.style.transform = '';
-    element.style.opacity = '';
     element.style.pointerEvents = '';
-    this.activeRestorations.delete(element);
     this.modifiedElements.delete(element);
+    this.activeRestorations.delete(element);
   }
 
   /**
-   * Failsafe cleanup restoring all modified host DOM elements back to pristine native state.
+   * Restores all modified elements to their original native styles.
    */
   public restoreAll(): void {
-    this.activeRestorations.forEach((restore) => {
-      try {
-        restore();
-      } catch {
-        // Silently tolerate if element is already detached
-      }
-    });
+    const restorations = Array.from(this.activeRestorations.values());
     this.activeRestorations.clear();
     this.modifiedElements.clear();
+    restorations.forEach((restore) => {
+      try {
+        restore();
+      } catch (e) {
+        // Safe restoration fallback
+      }
+    });
   }
 }

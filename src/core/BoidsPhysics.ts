@@ -14,8 +14,8 @@ import {
 } from '../utils/math';
 
 /**
- * Reynolds Boids algorithm implementation with dynamic mouse attraction
- * and viewport boundary repulsion.
+ * Reynolds Boids algorithm implementation with dynamic orbital dispersal,
+ * neighbor velocity alignment, and viewport boundary protection.
  */
 export class BoidsPhysics {
   /**
@@ -26,32 +26,62 @@ export class BoidsPhysics {
     allAgents: Agent[],
     mousePos: Vector2D | null,
     config: ResolvedSwarmConfig,
-    viewport: { width: number; height: number }
+    viewport: { width: number; height: number },
+    timeSeconds = 0
   ): Vector2D {
-    const sep = this.separate(agent, allAgents, config.separateDistance);
+    // 1. Separation: Strong repulsion when closer than 65px so agents never bunch up
+    const sep = this.separate(agent, allAgents, Math.max(config.separateDistance, 65));
+
+    // 2. Alignment: match velocity of nearby idle agents
     const ali = this.align(agent, allAgents, config.flockRadius);
+
+    // 3. Gentle cohesion: very low weight to prevent collapsing into a tight ball
     const coh = this.cohere(agent, allAgents, config.flockRadius);
+
+    // 4. Viewport boundaries: keep inside screen
     const bounds = this.boundEdges(agent, viewport, 60);
 
-    // Default force weights
     let totalForce = vec(0, 0);
-    totalForce = add(totalForce, mult(sep, 1.6));
-    totalForce = add(totalForce, mult(ali, 1.0));
-    totalForce = add(totalForce, mult(coh, 0.9));
-    totalForce = add(totalForce, mult(bounds, 2.2));
+    totalForce = add(totalForce, mult(sep, 3.2));
+    totalForce = add(totalForce, mult(ali, 0.4));
+    totalForce = add(totalForce, mult(coh, 0.15));
+    totalForce = add(totalForce, mult(bounds, 2.5));
 
-    // Mouse attraction / Orbiting
-    if (config.followMouse && mousePos) {
-      const mouseForce = this.attractToMouse(
-        agent,
-        mousePos,
-        config.mouseAttractRadius,
-        config.mouseAttractForce
-      );
-      totalForce = add(totalForce, mouseForce);
+    // 5. Dynamic Orbital Halo around Focal Point (center logo, user mouse, or upcoming content)
+    if (mousePos) {
+      const orbitForce = this.orbitalHalo(agent, mousePos, timeSeconds);
+      totalForce = add(totalForce, orbitForce);
     }
 
-    return limit(totalForce, agent.maxForce * 2.0);
+    return limit(totalForce, agent.maxForce * 2.2);
+  }
+
+  /**
+   * Smooth orbital dispersion around a focal center point.
+   * Maintains an open ring (radius 130px - 220px) with tangential rotation
+   * and outward radial repulsion when agents approach too closely.
+   */
+  public static orbitalHalo(agent: Agent, focal: Vector2D, time = 0): Vector2D {
+    const toFocal = sub(agent.position, focal);
+    const d = dist(agent.position, focal) || 0.01;
+    const dir = div(toFocal, d); // Unit vector pointing outwards from focal center
+
+    // Individual orbital radius per agent based on id
+    const baseRadius = 140 + ((agent.id * 19) % 90);
+    const breathing = 1 + 0.15 * Math.sin(time * 0.7 + agent.id);
+    const desiredRadius = baseRadius * breathing;
+
+    // Radial spring force: pushes outward if d < desiredRadius, pulls inward if d > desiredRadius
+    const radialDelta = desiredRadius - d;
+    const radialMag = Math.max(-1.8, Math.min(1.8, radialDelta * 0.025));
+    const radialForce = mult(dir, radialMag);
+
+    // Tangential orbital velocity: spins clockwise or counter-clockwise
+    const spinDirection = agent.id % 2 === 0 ? 1 : -1;
+    const tangent = { x: -dir.y * spinDirection, y: dir.x * spinDirection };
+    const tangentialForce = mult(tangent, 0.95);
+
+    return add(radialForce, tangentialForce);
   }
 
   /**
@@ -69,9 +99,9 @@ export class BoidsPhysics {
       const dSq = distSq(agent.position, other.position);
       if (dSq > 0 && dSq < sepSq) {
         const d = Math.sqrt(dSq);
-        // Vector pointing away from neighbor, inversely proportional to distance
         let diff = sub(agent.position, other.position);
         diff = normalize(diff);
+        // Inverse distance weighting
         diff = div(diff, Math.max(d, 1));
         steer = add(steer, diff);
         count++;
@@ -161,10 +191,7 @@ export class BoidsPhysics {
     const d = dist(agent.position, mousePos);
     if (d > radius * 2.5) return vec(0, 0);
 
-    // Seek towards mouse with arrival
     const seekForce = this.seek(agent, mousePos, radius * 0.8);
-
-    // Add gentle swirling tangential vector around cursor for dynamic flock cloud
     const toMouse = sub(mousePos, agent.position);
     const tangent = normalize({ x: -toMouse.y, y: toMouse.x });
     const orbitMag = (1 - Math.min(d / radius, 1)) * 0.8;
@@ -224,4 +251,3 @@ export class BoidsPhysics {
     return steer;
   }
 }
-

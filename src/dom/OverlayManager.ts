@@ -1,5 +1,14 @@
 import { AgentType, BoundingBoxType } from '../types';
 
+export interface BoxRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  right?: number;
+  bottom?: number;
+}
+
 export interface ActiveRulerSegment {
   left: number;
   width: number;
@@ -134,10 +143,10 @@ export class OverlayManager {
    */
   private generateTopRulerTicks(): string {
     let html = '';
-    for (let x = -100; x <= 2200; x += 100) {
+    for (let x = -100; x <= 2400; x += 100) {
       html += `<div class="swarm-ruler-tick-num" style="left: ${x + 100}px;">${x}</div>`;
       for (let sub = 10; sub < 100; sub += 10) {
-        const height = sub === 50 ? 8 : 4;
+        const height = sub === 50 ? 7 : 4;
         html += `<div class="swarm-ruler-tick" style="left: ${x + 100 + sub}px; height: ${height}px;"></div>`;
       }
     }
@@ -149,10 +158,10 @@ export class OverlayManager {
    */
   private generateLeftRulerTicks(): string {
     let html = '';
-    for (let y = 0; y <= 2000; y += 100) {
+    for (let y = 0; y <= 2400; y += 100) {
       html += `<div class="swarm-ruler-tick-num-v" style="top: ${y}px;">${y}</div>`;
       for (let sub = 10; sub < 100; sub += 10) {
-        const width = sub === 50 ? 8 : 4;
+        const width = sub === 50 ? 7 : 4;
         html += `<div class="swarm-ruler-tick-v" style="top: ${y + sub}px; width: ${width}px;"></div>`;
       }
     }
@@ -164,8 +173,11 @@ export class OverlayManager {
    */
   public setRulersVisible(visible: boolean): void {
     if (this.rulersContainer) {
-      this.rulersContainer.style.opacity = visible ? '1' : '0';
-      this.rulersContainer.style.pointerEvents = 'none';
+      if (visible) {
+        this.rulersContainer.classList.add('visible');
+      } else {
+        this.rulersContainer.classList.remove('visible');
+      }
     }
   }
 
@@ -229,34 +241,46 @@ export class OverlayManager {
 
   /**
    * Updates hardware-accelerated transform of an agent cursor.
+   * Keeps arrow cursor upright with hotspot tip at (4, 3) like Figma.
    */
   public updateAgentTransform(
     el: HTMLElement,
     x: number,
     y: number,
-    angleDeg: number,
+    _angleDeg: number,
     scale = 1
   ): void {
     const isIBeam = el.querySelector('.is-ibeam') !== null;
-    const offsetX = isIBeam ? 10 : 3;
-    const offsetY = isIBeam ? 12 : 2;
-    el.style.transform = `translate3d(${x - offsetX}px, ${y - offsetY}px, 0) rotate(${angleDeg}deg) scale(${scale})`;
+    const isCross = el.querySelector('.is-crosshair') !== null;
+    const offsetX = isIBeam || isCross ? 11 : 4;
+    const offsetY = isIBeam || isCross ? 11 : 3;
+
+    el.style.transform = `translate3d(${(x - offsetX).toFixed(1)}px, ${(y - offsetY).toFixed(1)}px, 0) scale(${scale.toFixed(3)})`;
   }
 
   /**
-   * Morphs/switches an agent icon between pointer arrow, I-beam text cursor, and crosshair.
+   * Changes agent cursor appearance (pointer, ibeam, or crosshair).
    */
-  public setAgentIcon(iconContainer: HTMLElement, type: AgentType, color: string): void {
+  public setAgentType(iconContainer: HTMLElement, type: AgentType, color: string): void {
     if (type === 'ibeam') {
       iconContainer.innerHTML = this.getIBeamSvg(color);
       iconContainer.classList.add('is-ibeam');
+      iconContainer.classList.remove('is-crosshair');
     } else if (type === 'crosshair') {
       iconContainer.innerHTML = this.getCrosshairSvg(color);
+      iconContainer.classList.add('is-crosshair');
       iconContainer.classList.remove('is-ibeam');
     } else {
       iconContainer.innerHTML = this.getPointerSvg(color);
-      iconContainer.classList.remove('is-ibeam');
+      iconContainer.classList.remove('is-ibeam', 'is-crosshair');
     }
+  }
+
+  /**
+   * Compatibility alias for setAgentType.
+   */
+  public setAgentIcon(iconContainer: HTMLElement, type: AgentType, color: string): void {
+    this.setAgentType(iconContainer, type, color);
   }
 
   /**
@@ -264,7 +288,7 @@ export class OverlayManager {
    */
   public createBoundingBox(
     id: string,
-    rect: DOMRect,
+    rect: BoxRect,
     type: BoundingBoxType,
     showDimensions = true,
     showGuides = true
@@ -279,8 +303,8 @@ export class OverlayManager {
 
     // Apply geometry
     box.style.transform = `translate3d(${rect.left}px, ${rect.top}px, 0)`;
-    box.style.width = `${Math.max(8, rect.width)}px`;
-    box.style.height = `${Math.max(8, rect.height)}px`;
+    box.style.width = `${Math.max(6, rect.width)}px`;
+    box.style.height = `${Math.max(6, rect.height)}px`;
 
     // 8 Figma Resize Handles (4 corners + 4 midpoints)
     const handles = ['tl', 'tr', 'bl', 'br', 'mt', 'mb', 'ml', 'mr'];
@@ -310,8 +334,11 @@ export class OverlayManager {
   /**
    * Creates full-screen red alignment guide lines and cyan dashed layout lines with crosshairs.
    */
-  private createAlignmentGuides(id: string, rect: DOMRect): void {
+  private createAlignmentGuides(id: string, rect: BoxRect): void {
     if (!this.guidesLayer) return;
+
+    const right = rect.right !== undefined ? rect.right : rect.left + rect.width;
+    const bottom = rect.bottom !== undefined ? rect.bottom : rect.top + rect.height;
 
     const guidesContainer = document.createElement('div');
     guidesContainer.className = 'swarm-guides-group';
@@ -330,12 +357,12 @@ export class OverlayManager {
     // Horizontal cyan dashed line at bottom
     const hBottom = document.createElement('div');
     hBottom.className = 'swarm-guide swarm-guide-cyan-h';
-    hBottom.style.top = `${rect.bottom}px`;
+    hBottom.style.top = `${bottom}px`;
 
     // Vertical cyan dashed line at right
     const vRight = document.createElement('div');
     vRight.className = 'swarm-guide swarm-guide-cyan-v';
-    vRight.style.left = `${rect.right}px`;
+    vRight.style.left = `${right}px`;
 
     // Crosshair markers at corners
     const cross1 = document.createElement('div');
@@ -347,8 +374,8 @@ export class OverlayManager {
     const cross2 = document.createElement('div');
     cross2.className = 'swarm-crosshair crosshair-br';
     cross2.textContent = '+';
-    cross2.style.left = `${rect.right}px`;
-    cross2.style.top = `${rect.bottom}px`;
+    cross2.style.left = `${right}px`;
+    cross2.style.top = `${bottom}px`;
 
     guidesContainer.appendChild(redV);
     guidesContainer.appendChild(hTop);
@@ -363,28 +390,31 @@ export class OverlayManager {
   /**
    * Updates coordinates of an existing bounding box and its alignment guides during scrolling/resizing.
    */
-  public updateBoundingBox(boxEl: HTMLElement, rect: DOMRect, id?: string): void {
+  public updateBoundingBox(boxEl: HTMLElement, rect: BoxRect, id?: string): void {
     boxEl.style.transform = `translate3d(${rect.left}px, ${rect.top}px, 0)`;
-    boxEl.style.width = `${Math.max(8, rect.width)}px`;
-    boxEl.style.height = `${Math.max(8, rect.height)}px`;
+    boxEl.style.width = `${Math.max(6, rect.width)}px`;
+    boxEl.style.height = `${Math.max(6, rect.height)}px`;
 
     const dimBadge = boxEl.querySelector('.swarm-dimension-badge');
     if (dimBadge) {
       dimBadge.textContent = `${Math.round(rect.width)} × ${Math.round(rect.height)}`;
     }
 
-    if (id && this.guidesLayer) {
-      const guidesGroup = this.shadowRoot?.getElementById(`swarm-guides-${id}`);
+    if (id && this.guidesLayer && this.shadowRoot) {
+      const guidesGroup = this.shadowRoot.getElementById(`swarm-guides-${id}`);
       if (guidesGroup) {
+        const right = rect.right !== undefined ? rect.right : rect.left + rect.width;
+        const bottom = rect.bottom !== undefined ? rect.bottom : rect.top + rect.height;
+
         const redV = guidesGroup.querySelector<HTMLElement>('.swarm-guide-red-v');
         if (redV) redV.style.left = `${rect.left}px`;
 
         const hCyan = guidesGroup.querySelectorAll<HTMLElement>('.swarm-guide-cyan-h');
         if (hCyan[0]) hCyan[0].style.top = `${rect.top}px`;
-        if (hCyan[1]) hCyan[1].style.top = `${rect.bottom}px`;
+        if (hCyan[1]) hCyan[1].style.top = `${bottom}px`;
 
         const vCyan = guidesGroup.querySelector<HTMLElement>('.swarm-guide-cyan-v');
-        if (vCyan) vCyan.style.left = `${rect.right}px`;
+        if (vCyan) vCyan.style.left = `${right}px`;
 
         const cross1 = guidesGroup.querySelector<HTMLElement>('.crosshair-tl');
         if (cross1) {
@@ -394,8 +424,8 @@ export class OverlayManager {
 
         const cross2 = guidesGroup.querySelector<HTMLElement>('.crosshair-br');
         if (cross2) {
-          cross2.style.left = `${rect.right}px`;
-          cross2.style.top = `${rect.bottom}px`;
+          cross2.style.left = `${right}px`;
+          cross2.style.top = `${bottom}px`;
         }
       }
     }
@@ -417,30 +447,32 @@ export class OverlayManager {
   }
 
   /**
-   * Pointer SVG icon string.
+   * Figma-exact pointer arrow SVG.
    */
   private getPointerSvg(color: string): string {
     return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M3 2L10 21L13.5 13.5L21 10L3 2Z" fill="${color}" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M4.6 3.9 C4.2 3.1 4.9 2.4 5.7 2.8 L20.6 9.4 C21.5 9.8 21.4 11.1 20.4 11.3 L13.9 12.9 C13.4 13 13 13.4 12.9 13.9 L11.3 20.4 C11.1 21.4 9.8 21.5 9.4 20.6 Z" fill="${color}" stroke="#FFFFFF" stroke-width="1.5" stroke-linejoin="round"/>
     </svg>`;
   }
 
   /**
-   * I-Beam text SVG icon string.
+   * Figma I-Beam text SVG icon string.
    */
   private getIBeamSvg(color: string): string {
-    return `<svg width="22" height="26" viewBox="0 0 20 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M4 3H16M10 3V21M4 21H16" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round"/>
-      <path d="M4 3H16M10 3V21M4 21H16" stroke="${color}" stroke-width="2.2" stroke-linecap="round"/>
+    const d = "M8.5 4.5 H10.5 Q12 4.5 12 6 Q12 4.5 13.5 4.5 H15.5 M12 6 V18 M8.5 19.5 H10.5 Q12 19.5 12 18 Q12 19.5 13.5 19.5 H15.5";
+    return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="${d}" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round"/>
+      <path d="${d}" stroke="${color}" stroke-width="1.6" stroke-linecap="round"/>
     </svg>`;
   }
 
   /**
-   * Crosshair (+) SVG icon string.
+   * Figma Crosshair (+) SVG icon string.
    */
   private getCrosshairSvg(color: string): string {
-    return `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M10 2V18M2 10H18" stroke="${color}" stroke-width="2.2" stroke-linecap="round"/>
+    return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 3.5 V20.5 M3.5 12 H20.5" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round"/>
+      <path d="M12 3.5 V20.5 M3.5 12 H20.5" stroke="${color}" stroke-width="1.6" stroke-linecap="round"/>
     </svg>`;
   }
 
@@ -451,125 +483,146 @@ export class OverlayManager {
     return `
       :host {
         all: initial;
-        pointer-events: none;
-      }
-      .swarm-root {
         position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 2147483647;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      .swarm-root {
+        position: absolute;
         inset: 0;
         width: 100vw;
         height: 100vh;
-        pointer-events: none;
         overflow: hidden;
+        pointer-events: none;
         user-select: none;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       }
 
-      /* Figma Rulers */
+      /* Figma Rulers Container */
       .swarm-rulers-wrapper {
         position: absolute;
         inset: 0;
         pointer-events: none;
-        z-index: 50;
-        transition: opacity 0.3s ease;
+        z-index: 40;
       }
+
       .swarm-ruler-corner {
         position: fixed;
         top: 0;
         left: 0;
-        width: 24px;
-        height: 22px;
-        background: #18191c;
-        border-right: 1px solid #2d2f34;
-        border-bottom: 1px solid #2d2f34;
-        z-index: 55;
+        width: 20px;
+        height: 20px;
+        background: #2c2c2c;
+        border-right: 1px solid #3a3a3a;
+        border-bottom: 1px solid #3a3a3a;
+        z-index: 42;
+        opacity: 0;
+        transition: opacity 0.25s ease;
       }
+
       .swarm-ruler-top {
         position: fixed;
         top: 0;
-        left: 24px;
+        left: 0;
         right: 0;
-        height: 22px;
-        background: #18191c;
-        color: #72747d;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        font-size: 9px;
-        border-bottom: 1px solid #2d2f34;
+        height: 20px;
+        background: #2c2c2c;
+        border-bottom: 1px solid #3a3a3a;
+        z-index: 41;
         overflow: hidden;
-        pointer-events: none;
-        z-index: 50;
+        transform: translateY(-100%);
+        transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
       }
+
       .swarm-ruler-left {
         position: fixed;
-        top: 22px;
+        top: 0;
         left: 0;
         bottom: 0;
-        width: 24px;
-        background: #18191c;
-        color: #72747d;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        font-size: 9px;
-        border-right: 1px solid #2d2f34;
+        width: 20px;
+        background: #2c2c2c;
+        border-right: 1px solid #3a3a3a;
+        z-index: 41;
         overflow: hidden;
-        pointer-events: none;
-        z-index: 50;
+        transform: translateX(-100%);
+        transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      .swarm-rulers-wrapper.visible .swarm-ruler-top {
+        transform: translateY(0);
+      }
+      .swarm-rulers-wrapper.visible .swarm-ruler-left {
+        transform: translateX(0);
+      }
+      .swarm-rulers-wrapper.visible .swarm-ruler-corner {
+        opacity: 1;
+      }
+
+      .swarm-ruler-tick-num {
+        position: absolute;
+        bottom: 7px;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 9px;
+        font-weight: 500;
+        color: #8c8c8c;
+        transform: translateX(-50%);
+        letter-spacing: -0.2px;
       }
       .swarm-ruler-tick {
         position: absolute;
         bottom: 0;
         width: 1px;
-        background: #3a3d45;
+        background: #5e5e5e;
       }
-      .swarm-ruler-tick-num {
+
+      .swarm-ruler-tick-num-v {
         position: absolute;
-        bottom: 4px;
-        transform: translateX(-50%);
+        right: 6px;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         font-size: 8px;
-        color: #8a8d98;
+        font-weight: 500;
+        color: #8c8c8c;
+        transform: translateY(-50%) rotate(-90deg);
+        letter-spacing: -0.2px;
       }
       .swarm-ruler-tick-v {
         position: absolute;
         right: 0;
         height: 1px;
-        background: #3a3d45;
+        background: #5e5e5e;
       }
-      .swarm-ruler-tick-num-v {
-        position: absolute;
-        right: 3px;
-        font-size: 7px;
-        color: #8a8d98;
-      }
-      .swarm-ruler-segments-top,
-      .swarm-ruler-segments-left {
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-      }
+
+      /* Active highlighted coordinate segments on rulers */
       .swarm-ruler-segment-top {
         position: absolute;
         top: 0;
-        height: 22px;
-        background: rgba(0, 163, 255, 0.35);
-        border-left: 1px solid #00a3ff;
-        border-right: 1px solid #00a3ff;
-        color: #ffffff;
-        font-weight: 700;
+        height: 20px;
+        background: rgba(13, 153, 255, 0.22);
+        color: #0d99ff;
+        font-family: Inter, -apple-system, system-ui, sans-serif;
+        font-weight: 600;
         font-size: 9px;
         display: flex;
         align-items: center;
-        justify-content: center;
+        padding-left: 3px;
         overflow: hidden;
         white-space: nowrap;
-        text-shadow: 0 1px 2px rgba(0,0,0,0.8);
       }
       .swarm-ruler-segment-left {
         position: absolute;
         left: 0;
-        width: 24px;
-        background: rgba(0, 163, 255, 0.35);
-        border-top: 1px solid #00a3ff;
-        border-bottom: 1px solid #00a3ff;
-        color: #ffffff;
-        font-weight: 700;
+        width: 20px;
+        background: rgba(13, 153, 255, 0.22);
+        color: #0d99ff;
+        font-family: Inter, -apple-system, system-ui, sans-serif;
+        font-weight: 600;
         font-size: 8px;
         display: flex;
         align-items: center;
@@ -577,7 +630,6 @@ export class OverlayManager {
         overflow: hidden;
         white-space: nowrap;
         writing-mode: vertical-lr;
-        text-shadow: 0 1px 2px rgba(0,0,0,0.8);
       }
 
       /* Guide Lines & Wireframes */
@@ -610,7 +662,7 @@ export class OverlayManager {
         height: 100vh;
         width: 1px;
         background: #f24822;
-        box-shadow: 0 0 6px rgba(242, 72, 34, 0.7);
+        opacity: 0.85;
       }
       .swarm-guide-cyan-h {
         left: 0;
@@ -618,7 +670,7 @@ export class OverlayManager {
         width: 100vw;
         height: 1px;
         background: transparent;
-        border-top: 1px dashed rgba(0, 168, 255, 0.65);
+        border-top: 1px dashed rgba(13, 153, 255, 0.5);
       }
       .swarm-guide-cyan-v {
         top: 0;
@@ -626,17 +678,16 @@ export class OverlayManager {
         height: 100vh;
         width: 1px;
         background: transparent;
-        border-left: 1px dashed rgba(0, 168, 255, 0.65);
+        border-left: 1px dashed rgba(13, 153, 255, 0.5);
       }
       .swarm-crosshair {
         position: absolute;
         transform: translate(-50%, -50%);
-        font-size: 14px;
-        font-weight: bold;
-        color: #00a8ff;
+        font-size: 13px;
+        font-weight: 600;
+        color: #0d99ff;
         pointer-events: none;
         line-height: 1;
-        text-shadow: 0 0 4px rgba(0, 168, 255, 0.8);
       }
 
       /* Cursors */
@@ -646,40 +697,36 @@ export class OverlayManager {
         left: 0;
         pointer-events: none;
         will-change: transform;
-        transform-origin: 3px 2px;
-        filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.45));
-        transition: opacity 0.2s ease;
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+        transition: opacity 0.15s ease;
       }
       .swarm-agent-icon {
         display: inline-block;
         pointer-events: none;
-        transform-origin: 0 0;
-        transition: transform 0.15s ease;
       }
       .swarm-agent-icon.is-ibeam {
-        animation: swarm-ibeam-pulse 0.5s infinite alternate ease-in-out;
+        animation: swarm-ibeam-pulse 0.6s infinite alternate ease-in-out;
       }
       @keyframes swarm-ibeam-pulse {
-        0% { opacity: 0.7; transform: scale(0.95); }
-        100% { opacity: 1; transform: scale(1.1); }
+        0% { opacity: 0.8; }
+        100% { opacity: 1; }
       }
+
       .swarm-agent-label {
         position: absolute;
         top: 16px;
         left: 14px;
-        padding: 2px 7px;
+        padding: 2px 6px;
         border-radius: 4px;
         color: #ffffff;
         font-size: 10px;
-        font-weight: 700;
-        letter-spacing: 0.4px;
+        font-weight: 600;
         white-space: nowrap;
         pointer-events: none;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-        border: 1px solid rgba(255, 255, 255, 0.4);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
       }
 
-      /* Figma Blue Selection Boxes */
+      /* Figma Selection & Wireframe Bounding Boxes */
       .swarm-bounding-box {
         position: absolute;
         top: 0;
@@ -687,55 +734,58 @@ export class OverlayManager {
         pointer-events: none;
         will-change: transform, width, height;
         box-sizing: border-box;
-        border-radius: 2px;
-        transition: opacity 0.2s ease;
       }
       .box-blue {
-        border: 1.5px solid #00a8ff;
-        background: rgba(0, 168, 255, 0.08);
-        box-shadow: 0 0 14px rgba(0, 168, 255, 0.35);
+        border: 1.5px solid #0d99ff;
+        background: rgba(13, 153, 255, 0.035);
       }
       .box-red {
         border: 1.5px solid #f24822;
-        background: rgba(242, 72, 34, 0.08);
-        box-shadow: 0 0 14px rgba(242, 72, 34, 0.35);
+        background: rgba(242, 72, 34, 0.035);
       }
 
-      /* 8 Figma Handles */
+      /* 8 Figma Handles (7px × 7px white squares with box-colored 1px border) */
       .swarm-corner-handle {
         position: absolute;
-        width: 6px;
-        height: 6px;
+        width: 7px;
+        height: 7px;
         background: #ffffff;
-        border: 1.5px solid #00a8ff;
+        border: 1px solid #0d99ff;
         border-radius: 1px;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+        box-sizing: border-box;
       }
-      .handle-tl { top: -4px; left: -4px; }
-      .handle-tr { top: -4px; right: -4px; }
-      .handle-bl { bottom: -4px; left: -4px; }
-      .handle-br { bottom: -4px; right: -4px; }
-      .handle-mt { top: -4px; left: calc(50% - 3px); }
-      .handle-mb { bottom: -4px; left: calc(50% - 3px); }
-      .handle-ml { left: -4px; top: calc(50% - 3px); }
-      .handle-mr { right: -4px; top: calc(50% - 3px); }
+      .box-red .swarm-corner-handle {
+        border-color: #f24822;
+      }
+      .handle-tl { top: -3.5px; left: -3.5px; }
+      .handle-tr { top: -3.5px; right: -3.5px; }
+      .handle-bl { bottom: -3.5px; left: -3.5px; }
+      .handle-br { bottom: -3.5px; right: -3.5px; }
+      .handle-mt { top: -3.5px; left: calc(50% - 3.5px); }
+      .handle-mb { bottom: -3.5px; left: calc(50% - 3.5px); }
+      .handle-ml { left: -3.5px; top: calc(50% - 3.5px); }
+      .handle-mr { right: -3.5px; top: calc(50% - 3.5px); }
 
       /* Figma Dimension Pill Badge */
       .swarm-dimension-badge {
         position: absolute;
         left: 50%;
-        bottom: -24px;
+        top: calc(100% + 8px);
         transform: translateX(-50%);
-        background: #00a8ff;
+        background: #0d99ff;
         color: #ffffff;
-        font-size: 10px;
-        font-weight: 700;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        padding: 2px 6px;
-        border-radius: 3px;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        font-size: 11px;
+        line-height: 16px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        padding: 1px 5px;
+        border-radius: 2px;
         white-space: nowrap;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-        letter-spacing: 0.2px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+      }
+      .box-red .swarm-dimension-badge {
+        background: #f24822;
       }
     `;
   }

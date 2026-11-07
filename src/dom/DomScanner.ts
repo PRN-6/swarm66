@@ -100,17 +100,28 @@ export class DomScanner {
    * Identifies if an element is a distinct component container (card, box, section).
    */
   private isBlockContainer(el: HTMLElement): boolean {
-    const classList = el.className || '';
+    const tag = el.tagName.toLowerCase();
+    // Buttons, links, and text elements must always be constructed as independent elements
     if (
-      classList.includes('card') ||
-      classList.includes('box') ||
-      classList.includes('item') ||
-      classList.includes('navbar')
+      tag === 'button' ||
+      tag === 'a' ||
+      tag === 'h1' ||
+      tag === 'h2' ||
+      tag === 'h3' ||
+      tag === 'h4' ||
+      tag === 'h5' ||
+      tag === 'h6' ||
+      tag === 'p' ||
+      tag === 'code'
     ) {
+      return false;
+    }
+
+    const classList = el.className || '';
+    if (classList.includes('card') || classList.includes('terminal') || classList.includes('spec-terminal')) {
       return true;
     }
-    const tag = el.tagName.toLowerCase();
-    return tag === 'header' || tag === 'section' || tag === 'article';
+    return tag === 'section' || tag === 'article';
   }
 
   /**

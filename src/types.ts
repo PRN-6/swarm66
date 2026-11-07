@@ -84,8 +84,8 @@ export interface SwarmConfig {
   typewriterEffect?: boolean;
 
   /**
-   * Number of elements being constructed simultaneously in parallel waves.
-   * @default 12
+   * Number of elements being constructed simultaneously. Set to 1 for sequential one-by-one element construction.
+   * @default 1
    */
   concurrency?: number;
 
