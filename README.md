@@ -1,19 +1,18 @@
-# swarm66 ⚡
+# @leozodiac/swarm66 ⚡
 
 > **Universal plug-and-play visual engine that reverse-engineers any webpage's DOM on the fly. When initialized on ANY website, the page begins blank with its natural background, autonomous AI/Figma-style cursors swarm in to construct the webpage live before the user's eyes, and once the entire page is built, every cursor converges into the user's cursor and vanishes.**
 
-[![npm version](https://img.shields.io/npm/v/swarm66.svg?style=flat-square&color=0d99ff)](https://www.npmjs.com/package/swarm66)
+[![npm version](https://img.shields.io/npm/v/@leozodiac/swarm66.svg?style=flat-square&color=0d99ff)](https://www.npmjs.com/package/@leozodiac/swarm66)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict%205.7-blue.svg?style=flat-square)](https://www.typescriptlang.org/)
-[![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-success.svg?style=flat-square)](https://bundlephobia.com/package/swarm66)
-[![Bundle Size](https://img.shields.io/badge/Minified%20Bundle-~31KB-informational.svg?style=flat-square)](https://bundlephobia.com/package/swarm66)
+[![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-success.svg?style=flat-square)](https://bundlephobia.com/package/@leozodiac/swarm66)
 
 ---
 
 ## ✨ How It Works
 
 1. **Initial Blank Canvas:**
-   When installed in any project (React, Next.js, Vue, Svelte, or Vanilla HTML), `swarm66` indexes every element on the page. The page begins completely blank while preserving the site's natural background colors and layout flow.
+   When installed in any project (React, Next.js, Vue, Svelte, or Vanilla HTML), `@leozodiac/swarm66` indexes every element on the page. The page begins completely blank while preserving the site's natural background colors and layout flow.
 2. **Autonomous Swarm Construction:**
    A squad of 18 vibrant Figma-style AI cursors organized into 4-member squads systematically builds the page:
    - **Focused Tool Cursors:**
@@ -34,22 +33,22 @@ Install via npm, pnpm, or yarn:
 
 ```bash
 # npm
-npm install swarm66
+npm install @leozodiac/swarm66
 
 # pnpm
-pnpm add swarm66
+pnpm add @leozodiac/swarm66
 
 # yarn
-yarn add swarm66
+yarn add @leozodiac/swarm66
 ```
 
 ### CDN / Standalone Script Tag
 
-Drop `swarm66` directly into any static HTML, PHP, or WordPress website using a script tag:
+Drop `@leozodiac/swarm66` directly into any static HTML, PHP, or WordPress website using a script tag:
 
 ```html
 <!-- Load swarm66 global bundle from CDN -->
-<script src="https://cdn.jsdelivr.net/npm/swarm66@1.0.0/dist/index.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@leozodiac/swarm66@1.0.0/dist/index.global.js"></script>
 
 <script>
   // Mount the swarm engine
