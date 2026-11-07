@@ -15,7 +15,8 @@ const MIME_TYPES = {
 const server = http.createServer((req, res) => {
   let urlPath = req.url.split('?')[0];
   if (urlPath === '/' || urlPath === '') {
-    urlPath = '/demo/index.html';
+    const rootIndex = path.join(__dirname, '..', 'index.html');
+    urlPath = fs.existsSync(rootIndex) ? '/index.html' : '/demo/index.html';
   }
 
   let filePath = path.join(__dirname, '..', urlPath);

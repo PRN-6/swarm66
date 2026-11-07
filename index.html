@@ -1,0 +1,1370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>swarm66 — Autonomous AI Cursors for Any Webpage</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Press+Start+2P&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      /* Default Theme: Electric Cyan & Cyber Violet */
+      --accent: #00f0ff;
+      --accent-rgb: 0, 240, 255;
+      --accent-glow: rgba(0, 240, 255, 0.35);
+      --accent-hover: #00cce0;
+      --accent-sec: #a855f7;
+      --accent-sec-rgb: 168, 85, 247;
+      
+      --bg: #06070a;
+      --bg-surface: rgba(255, 255, 255, 0.025);
+      --bg-surface-hover: rgba(255, 255, 255, 0.05);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(0, 240, 255, 0.35);
+      
+      --text: #f3f4f6;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      
+      --font-pixel: 'Press Start 2P', monospace;
+      --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
+
+    /* Alternate Color Themes */
+    [data-theme="violet"] {
+      --accent: #a855f7;
+      --accent-rgb: 168, 85, 247;
+      --accent-glow: rgba(168, 85, 247, 0.4);
+      --accent-hover: #9333ea;
+      --accent-sec: #ec4899;
+      --border-accent: rgba(168, 85, 247, 0.4);
+    }
+    [data-theme="blue"] {
+      --accent: #0d99ff;
+      --accent-rgb: 13, 153, 255;
+      --accent-glow: rgba(13, 153, 255, 0.4);
+      --accent-hover: #0284c7;
+      --accent-sec: #38bdf8;
+      --border-accent: rgba(13, 153, 255, 0.4);
+    }
+    [data-theme="emerald"] {
+      --accent: #00f5a0;
+      --accent-rgb: 0, 245, 160;
+      --accent-glow: rgba(0, 245, 160, 0.4);
+      --accent-hover: #00d98e;
+      --accent-sec: #06b6d4;
+      --border-accent: rgba(0, 245, 160, 0.4);
+    }
+    [data-theme="amber"] {
+      --accent: #f59e0b;
+      --accent-rgb: 245, 158, 11;
+      --accent-glow: rgba(245, 158, 11, 0.4);
+      --accent-hover: #d97706;
+      --accent-sec: #ef4444;
+      --border-accent: rgba(245, 158, 11, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      line-height: 1.6;
+      overflow-x: hidden;
+      min-height: 100vh;
+      position: relative;
+      /* Precise dark grid background matching reference */
+      background-image: 
+        linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* Ambient lighting */
+    .ambient-radial {
+      position: fixed;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 1000px;
+      height: 600px;
+      background: radial-gradient(circle at 50% 30%, var(--accent-glow) 0%, transparent 65%);
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.7;
+      transition: background 0.3s ease;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Top Navigation Bar */
+    header.site-header {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: rgba(6, 7, 10, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 68px;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: #fff;
+    }
+
+    .brand-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+      animation: pulse-dot 2s infinite ease-in-out;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(0.85); }
+    }
+
+    .brand-text {
+      font-family: var(--font-pixel);
+      font-size: 13px;
+      letter-spacing: 2px;
+      color: #fff;
+    }
+
+    .brand-tag {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+
+    .nav-menu {
+      display: flex;
+      gap: 22px;
+      align-items: center;
+    }
+
+    .nav-menu a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      transition: color 0.15s ease;
+    }
+    .nav-menu a:hover {
+      color: #fff;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    /* Color Theme Palette Switcher */
+    .theme-picker {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      padding: 4px 8px;
+      border-radius: 20px;
+    }
+    .theme-btn {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .theme-btn:hover {
+      transform: scale(1.25);
+    }
+    .btn-theme-cyan { background: #00f0ff; }
+    .btn-theme-violet { background: #a855f7; }
+    .btn-theme-blue { background: #0d99ff; }
+    .btn-theme-emerald { background: #00f5a0; }
+    .btn-theme-amber { background: #f59e0b; }
+
+    .btn-gh {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 7px 14px;
+      border-radius: 6px;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .btn-gh:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .btn-cta-nav {
+      background: var(--accent);
+      color: #000;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 7px 16px;
+      border-radius: 6px;
+      text-decoration: none;
+      box-shadow: 0 0 16px var(--accent-glow);
+      transition: background-color 0.15s, transform 0.15s;
+    }
+    .btn-cta-nav:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+
+    /* Hero Section (Pixel Art & ASCII Aesthetic) */
+    .hero {
+      padding: 85px 0 60px;
+      text-align: center;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    .hero-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid var(--border-accent);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 32px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+    .hero-pill .pill-dot {
+      width: 7px;
+      height: 7px;
+      background: var(--accent);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--accent);
+    }
+    .hero-pill span.arrow {
+      color: var(--accent);
+      font-size: 13px;
+    }
+
+    /* Big Pixel Title */
+    .pixel-title {
+      font-family: var(--font-pixel);
+      font-size: 54px;
+      letter-spacing: 6px;
+      line-height: 1.1;
+      margin-bottom: 24px;
+      color: #ffffff;
+      text-shadow: 
+        0 0 20px rgba(var(--accent-rgb), 0.5),
+        0 4px 12px rgba(0, 0, 0, 0.8);
+      user-select: none;
+    }
+
+    .hero-subtitle {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.6px;
+      margin-bottom: 18px;
+      color: #ffffff;
+    }
+
+    .hero-desc {
+      font-size: 16px;
+      color: var(--text-muted);
+      line-height: 1.65;
+      margin-bottom: 36px;
+      max-width: 720px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .hero-buttons {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-bottom: 38px;
+    }
+
+    .btn-hero-primary {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: 700;
+      border-radius: 6px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 0 22px var(--accent-glow);
+      transition: background 0.15s, transform 0.15s;
+    }
+    .btn-hero-primary:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+
+    .btn-hero-secondary {
+      background: rgba(255, 255, 255, 0.04);
+      color: #fff;
+      border: 1px solid var(--border);
+      padding: 12px 22px;
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.15s;
+    }
+    .btn-hero-secondary:hover {
+      background: rgba(255, 255, 255, 0.09);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Terminal Copy Command Box */
+    .terminal-box {
+      max-width: 540px;
+      margin: 0 auto 20px;
+      background: #030407;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .terminal-code {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      white-space: nowrap;
+      overflow-x: auto;
+    }
+    .terminal-prompt {
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .btn-copy {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      border: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn-copy:hover {
+      background: var(--accent);
+      color: #000;
+    }
+
+    .terminal-sub {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 40px;
+    }
+
+    /* Metrics Chips Row */
+    .metrics-pills {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .metric-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      padding: 6px 14px;
+      border-radius: 20px;
+    }
+    .pill-indicator {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+    }
+    .ind-green { background: #10b981; box-shadow: 0 0 6px #10b981; }
+    .ind-yellow { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
+    .ind-blue { background: #00f0ff; box-shadow: 0 0 6px #00f0ff; }
+    .ind-purple { background: #a855f7; box-shadow: 0 0 6px #a855f7; }
+
+    /* Floating Status Widget (Bottom Left) */
+    .floating-widget {
+      position: fixed;
+      bottom: 24px;
+      left: 24px;
+      background: rgba(10, 12, 18, 0.88);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border-accent);
+      padding: 8px 14px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+      font-family: var(--font-mono);
+      z-index: 900;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+    }
+    .widget-icon {
+      color: var(--accent);
+      font-size: 14px;
+    }
+    .widget-text {
+      color: #fff;
+      font-weight: 600;
+    }
+    .widget-sub {
+      color: var(--text-dim);
+    }
+
+    /* Section Headers */
+    .section-wrap {
+      padding: 80px 0;
+      border-top: 1px solid var(--border);
+    }
+    .sec-head {
+      text-align: center;
+      max-width: 680px;
+      margin: 0 auto 50px;
+    }
+    .sec-eyebrow {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--accent);
+      margin-bottom: 12px;
+      display: block;
+    }
+    .sec-title {
+      font-size: 34px;
+      font-weight: 800;
+      letter-spacing: -0.8px;
+      margin-bottom: 14px;
+      color: #fff;
+    }
+    .sec-desc {
+      font-size: 15px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Feature Grid */
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .feature-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+    .feature-card:hover {
+      border-color: var(--border-accent);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    .card-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      background: rgba(var(--accent-rgb), 0.12);
+      color: var(--accent);
+      padding: 3px 8px;
+      border-radius: 4px;
+      display: inline-block;
+      margin-bottom: 16px;
+    }
+
+    .feature-card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: #fff;
+    }
+
+    .feature-card p {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Live Demos Showcase Cards */
+    .demos-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-top: 30px;
+    }
+
+    .demo-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 22px;
+      text-decoration: none;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: all 0.2s ease;
+    }
+    .demo-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-3px);
+      box-shadow: 0 6px 20px var(--accent-glow);
+    }
+
+    .demo-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--accent);
+      margin-bottom: 10px;
+      display: block;
+    }
+
+    .demo-card h4 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: #fff;
+    }
+
+    .demo-card p {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+
+    .demo-link-text {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Framework Code Switcher Tabs */
+    .framework-box {
+      background: #030407;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      max-width: 860px;
+      margin: 0 auto;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+
+    .tab-bar {
+      display: flex;
+      background: rgba(255, 255, 255, 0.025);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .tab-bar::-webkit-scrollbar { display: none; }
+
+    .fw-tab {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 12px 20px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .fw-tab:hover {
+      color: #fff;
+    }
+    .fw-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      background: rgba(var(--accent-rgb), 0.05);
+    }
+
+    .code-content {
+      padding: 24px;
+      position: relative;
+    }
+
+    .code-content pre {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.65;
+      color: #e2e8f0;
+      overflow-x: auto;
+    }
+    .code-hl-kw { color: #f43f5e; font-weight: 600; }
+    .code-hl-fn { color: #38bdf8; }
+    .code-hl-str { color: #34d399; }
+    .code-hl-com { color: #64748b; font-style: italic; }
+
+    /* Timeline Section */
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      margin-top: 40px;
+    }
+
+    .timeline-step {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px;
+      position: relative;
+    }
+    .step-num {
+      font-family: var(--font-pixel);
+      font-size: 14px;
+      color: var(--accent);
+      margin-bottom: 12px;
+      display: block;
+    }
+    .timeline-step h4 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+    .timeline-step p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* FAQ Accordion */
+    .faq-list {
+      max-width: 800px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .faq-item {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      transition: border-color 0.15s ease;
+    }
+    .faq-item:hover {
+      border-color: var(--border-accent);
+    }
+    .faq-q {
+      padding: 18px 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      user-select: none;
+    }
+    .faq-icon {
+      color: var(--accent);
+      font-size: 18px;
+      transition: transform 0.2s ease;
+    }
+    .faq-item.open .faq-icon {
+      transform: rotate(45deg);
+    }
+    .faq-a {
+      display: none;
+      padding: 0 22px 18px;
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.65;
+    }
+    .faq-item.open .faq-a {
+      display: block;
+    }
+
+    /* Footer */
+    footer.site-footer {
+      border-top: 1px solid var(--border);
+      padding: 60px 0 40px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    footer .footer-brand {
+      font-family: var(--font-pixel);
+      font-size: 14px;
+      color: #fff;
+      margin-bottom: 12px;
+    }
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    /* Mobile Responsiveness */
+    @media (max-width: 900px) {
+      .feature-grid, .timeline { grid-template-columns: 1fr 1fr; }
+      .demos-grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 768px) {
+      .nav-menu { display: none; }
+      .pixel-title { font-size: 32px; letter-spacing: 3px; }
+      .hero-subtitle { font-size: 20px; }
+      .hero-buttons { flex-direction: column; width: 100%; max-width: 280px; margin: 0 auto 30px; }
+      .btn-hero-primary, .btn-hero-secondary { width: 100%; justify-content: center; }
+      .feature-grid, .timeline, .demos-grid { grid-template-columns: 1fr; }
+      .floating-widget { display: none; }
+      .metrics-pills { gap: 10px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="ambient-radial"></div>
+
+  <!-- Top Navigation Bar -->
+  <header class="site-header">
+    <div class="container nav-inner">
+      <a href="#" class="nav-brand">
+        <div class="brand-dot"></div>
+        <span class="brand-text">SWARM66</span>
+        <span class="brand-tag">v1.0.1</span>
+      </a>
+
+      <nav class="nav-menu">
+        <a href="#demos">Live Demos</a>
+        <a href="#features">Features</a>
+        <a href="#install">Install</a>
+        <a href="#how-it-works">How It Works</a>
+        <a href="#code">Frameworks</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+
+      <div class="nav-actions">
+        <!-- 1-Click Color Theme Picker -->
+        <div class="theme-picker" title="Change Theme Color">
+          <button class="theme-btn btn-theme-cyan" onclick="setTheme('cyan')" title="Electric Cyan"></button>
+          <button class="theme-btn btn-theme-violet" onclick="setTheme('violet')" title="Cyber Violet"></button>
+          <button class="theme-btn btn-theme-blue" onclick="setTheme('blue')" title="Figma Blue"></button>
+          <button class="theme-btn btn-theme-emerald" onclick="setTheme('emerald')" title="Matrix Emerald"></button>
+          <button class="theme-btn btn-theme-amber" onclick="setTheme('amber')" title="Cyber Amber"></button>
+        </div>
+
+        <a href="https://github.com/leozodiac/swarm66" target="_blank" rel="noopener" class="btn-gh">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          <span>Star</span>
+        </a>
+
+        <a href="#install" class="btn-cta-nav">Get Started ↓</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section (Pixel Art & High Impact) -->
+  <main class="container">
+    <section class="hero">
+      <div class="hero-pill swarm-item">
+        <div class="pill-dot"></div>
+        <span>Swarm66 v1.0.1 Released · Autonomous Figma-Style AI Cursor Engine</span>
+        <span class="arrow">→</span>
+      </div>
+
+      <h1 class="pixel-title swarm-item">SWARM66</h1>
+
+      <h2 class="hero-subtitle swarm-item">Figma-Style Autonomous AI Cursors for Any Webpage</h2>
+
+      <p class="hero-desc swarm-item">
+        Swarm66 reverse-engineers any webpage DOM on the fly. 18 autonomous AI cursors assemble into 4-member squads to construct UI components live, with Figma-style single-corner dragging, instant duplicate cloning, and Boids flocking physics.
+      </p>
+
+      <div class="hero-buttons">
+        <a href="#install" class="btn-hero-primary swarm-item">
+          <span>⬇ Install Swarm66</span>
+        </a>
+        <a href="#demos" class="btn-hero-secondary swarm-item">
+          <span>▶ Explore Live Demos</span>
+        </a>
+        <button id="btnReplayHero" class="btn-hero-secondary swarm-item" style="cursor: pointer;">
+          <span>🔄 Replay Swarm</span>
+        </button>
+      </div>
+
+      <!-- Terminal Copy Box (Matching Reference Pic) -->
+      <div class="terminal-box swarm-item">
+        <div class="terminal-code">
+          <span class="terminal-prompt">&gt;</span>
+          <span>npm i @leozodiac/swarm66</span>
+        </div>
+        <button class="btn-copy" onclick="copyNpmCommand(this)">copy</button>
+      </div>
+      <div class="terminal-sub swarm-item">
+        ⚡ Run directly in any React, Next.js, Vue, Angular, Svelte, or PHP project. Zero dependencies.
+      </div>
+
+      <!-- Key Metrics Row (Matching Reference Pic) -->
+      <div class="metrics-pills">
+        <div class="metric-pill swarm-item">
+          <div class="pill-indicator ind-green"></div>
+          <span>0 dependencies</span>
+        </div>
+        <div class="metric-pill swarm-item">
+          <div class="pill-indicator ind-yellow"></div>
+          <span>31 KB bundle</span>
+        </div>
+        <div class="metric-pill swarm-item">
+          <div class="pill-indicator ind-blue"></div>
+          <span>18 autonomous agents</span>
+        </div>
+        <div class="metric-pill swarm-item">
+          <div class="pill-indicator ind-purple"></div>
+          <span>TS / React / Vue / PHP</span>
+        </div>
+        <div class="metric-pill swarm-item">
+          <div class="pill-indicator ind-green"></div>
+          <span>60 FPS Boids simulation</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4 Live Demos Section -->
+    <section class="section-wrap" id="demos">
+      <div class="sec-head">
+        <span class="sec-eyebrow">Production Demos</span>
+        <h2 class="sec-title swarm-item">Works Across Every Category of Website</h2>
+        <p class="sec-desc swarm-item">
+          Tested and proven across distinct web layouts. Click any demo below to experience live swarm construction in action:
+        </p>
+      </div>
+
+      <div class="demos-grid">
+        <a href="./demo/index.html" class="demo-card swarm-item">
+          <div>
+            <span class="demo-badge">DEMO · SAAS PLATFORM</span>
+            <h4>AI Cloud Dashboard</h4>
+            <p>Dark mode interface with metrics grids, typewriter typography, and interactive code blocks.</p>
+          </div>
+          <span class="demo-link-text">Launch Demo →</span>
+        </a>
+
+        <a href="./demo1/index.html" class="demo-card swarm-item">
+          <div>
+            <span class="demo-badge">DEMO 1 · E-COMMERCE</span>
+            <h4>LUMEN Tech Store</h4>
+            <p>Clean store showcasing product cards, duplicate ⌥Drag cloning, and shopping cart drawers.</p>
+          </div>
+          <span class="demo-link-text">Launch Demo 1 →</span>
+        </a>
+
+        <a href="./demo2/index.html" class="demo-card swarm-item">
+          <div>
+            <span class="demo-badge">DEMO 2 · DEVELOPER DOCS</span>
+            <h4>Vortex Docs Portal</h4>
+            <p>3-column documentation with responsive sticky sidebars, callout banners, and syntax themes.</p>
+          </div>
+          <span class="demo-link-text">Launch Demo 2 →</span>
+        </a>
+
+        <a href="./demo3/index.html" class="demo-card swarm-item">
+          <div>
+            <span class="demo-badge">DEMO 3 · CREATIVE AGENCY</span>
+            <h4>Kinetic Studio</h4>
+            <p>High-contrast editorial design with giant typography, case studies, and proposal forms.</p>
+          </div>
+          <span class="demo-link-text">Launch Demo 3 →</span>
+        </a>
+      </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="section-wrap" id="features">
+      <div class="sec-head">
+        <span class="sec-eyebrow">Core Engine Features</span>
+        <h2 class="sec-title swarm-item">Engineered for Realistic Design Craft</h2>
+        <p class="sec-desc swarm-item">
+          Unlike ordinary CSS loaders, Swarm66 simulates real human designers collaborating live inside Figma.
+        </p>
+      </div>
+
+      <div class="feature-grid">
+        <div class="feature-card swarm-item">
+          <span class="card-badge">SINGLE-AGENT CORNER DRAG</span>
+          <h3>Figma Shape Drawing</h3>
+          <p>Lead agents select the top-left anchor and drag diagonally across to dynamically size shapes and containers, with live pixel dimensions counting up in real-time.</p>
+        </div>
+
+        <div class="feature-card swarm-item">
+          <span class="card-badge">DUPLICATE ⌥DRAG</span>
+          <h3>Single Hand Cursor Glide</h3>
+          <p>Identical cards and containers are detected automatically. Exactly 1 hand cursor grabs and slides a ghost wireframe duplicate across the screen.</p>
+        </div>
+
+        <div class="feature-card swarm-item">
+          <span class="card-badge">TOOL MORPHING</span>
+          <h3>Pen, Hand & Upright Pointers</h3>
+          <p>Agents morph into vibrating pencil/pen tools for drafting headings, hand cursors for dragging, and naturally upright pointers without dizzying spins.</p>
+        </div>
+
+        <div class="feature-card swarm-item">
+          <span class="card-badge">BOIDS PHYSICS</span>
+          <h3>Reynolds Flocking Algorithm</h3>
+          <p>Agents exhibit realistic swarm behaviors: separation to avoid collisions, alignment with neighbors, cohesion, and dynamic mouse orbiting at 60 FPS.</p>
+        </div>
+
+        <div class="feature-card swarm-item">
+          <span class="card-badge">SPA ROUTING</span>
+          <h3>Multi-Page Navigation</h3>
+          <p>Intercepts pushState, replaceState, popstate, hashchange, Turbo, and Astro. Cursors wake up and construct new views dynamically when you change pages.</p>
+        </div>
+
+        <div class="feature-card swarm-item">
+          <span class="card-badge">ZERO DEPENDENCIES</span>
+          <h3>Ultra-Lightweight & Pure</h3>
+          <p>Zero third-party runtime dependencies. Under 32 KB minified and gzip-ready. Mounts safely in an isolated, collision-free Shadow DOM overlay.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section class="section-wrap" id="how-it-works">
+      <div class="sec-head">
+        <span class="sec-eyebrow">Lifecycle Pipeline</span>
+        <h2 class="sec-title swarm-item">How Swarm66 Operates</h2>
+        <p class="sec-desc swarm-item">
+          From initial blank canvas to the grand finale convergence into the user cursor.
+        </p>
+      </div>
+
+      <div class="timeline">
+        <div class="timeline-step swarm-item">
+          <span class="step-num">01</span>
+          <h4>DOM Reverse-Engineering</h4>
+          <p>Scans the host DOM, indexes hierarchy, and preserves original styles without touching your CSS.</p>
+        </div>
+
+        <div class="timeline-step swarm-item">
+          <span class="step-num">02</span>
+          <h4>Blank Canvas Start</h4>
+          <p>The webpage starts blank with natural background colors, ready for the swarm to construct it.</p>
+        </div>
+
+        <div class="timeline-step swarm-item">
+          <span class="step-num">03</span>
+          <h4>Squad Border Locks</h4>
+          <p>18 agents form 4-member teams to lock onto element borders, dragging wireframes and typing text.</p>
+        </div>
+
+        <div class="timeline-step swarm-item">
+          <span class="step-num">04</span>
+          <h4>Convergence Finale</h4>
+          <p>All cursors accelerate into the user's mouse position, swirling into a ripple and vanishing cleanly.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Framework Code Switcher -->
+    <section class="section-wrap" id="code">
+      <div class="sec-head">
+        <span class="sec-eyebrow">Developer Integration</span>
+        <h2 class="sec-title swarm-item">Works in Any Language or Framework</h2>
+        <p class="sec-desc swarm-item">
+          Universal compatibility with React, Next.js, Vue, Angular, Svelte, PHP, WordPress, Laravel, and plain HTML.
+        </p>
+      </div>
+
+      <div class="framework-box swarm-item">
+        <div class="tab-bar">
+          <button class="fw-tab active" onclick="switchTab('react')">React / Next.js</button>
+          <button class="fw-tab" onclick="switchTab('vue')">Vue 3 / Nuxt</button>
+          <button class="fw-tab" onclick="switchTab('angular')">Angular</button>
+          <button class="fw-tab" onclick="switchTab('svelte')">Svelte / SvelteKit</button>
+          <button class="fw-tab" onclick="switchTab('php')">PHP / Laravel</button>
+          <button class="fw-tab" onclick="switchTab('vanilla')">Vanilla HTML</button>
+        </div>
+
+        <div class="code-content">
+          <pre id="codeDisplay"><code><span class="code-hl-com">// React / Next.js Component Integration (SSR Safe)</span>
+<span class="code-hl-kw">import</span> { useEffect } <span class="code-hl-kw">from</span> <span class="code-hl-str">'react'</span>;
+<span class="code-hl-kw">import</span> { enableSwarm } <span class="code-hl-kw">from</span> <span class="code-hl-str">'@leozodiac/swarm66'</span>;
+
+<span class="code-hl-kw">export default function</span> <span class="code-hl-fn">LandingPage</span>() {
+  <span class="code-hl-fn">useEffect</span>(() =&gt; {
+    <span class="code-hl-kw">const</span> swarm = <span class="code-hl-fn">enableSwarm</span>({
+      agentCount: <span class="code-hl-fn">18</span>,
+      teamSize: <span class="code-hl-fn">4</span>,
+      hideOnStart: <span class="code-hl-kw">true</span>,
+      vanishAtCursor: <span class="code-hl-kw">true</span>,
+      typewriterEffect: <span class="code-hl-kw">true</span>,
+    });
+
+    <span class="code-hl-kw">return</span> () =&gt; swarm.<span class="code-hl-fn">destroy</span>();
+  }, []);
+
+  <span class="code-hl-kw">return</span> &lt;<span class="code-hl-fn">main</span>&gt;&lt;<span class="code-hl-fn">h1</span>&gt;Autonomous Swarm UI&lt;/<span class="code-hl-fn">h1</span>&gt;&lt;/<span class="code-hl-fn">main</span>&gt;;
+}</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Installation Section -->
+    <section class="section-wrap" id="install">
+      <div class="sec-head">
+        <span class="sec-eyebrow">Quick Setup</span>
+        <h2 class="sec-title swarm-item">Install in 10 Seconds</h2>
+        <p class="sec-desc swarm-item">
+          Published live on npm as <strong style="color: #fff;">@leozodiac/swarm66</strong>.
+        </p>
+      </div>
+
+      <div class="terminal-box swarm-item">
+        <div class="terminal-code">
+          <span class="terminal-prompt">$</span>
+          <span>npm install @leozodiac/swarm66</span>
+        </div>
+        <button class="btn-copy" onclick="copyNpmCommand(this)">copy</button>
+      </div>
+      <div class="terminal-sub swarm-item" style="text-align: center;">
+        Also available via pnpm: <code>pnpm add @leozodiac/swarm66</code> · yarn: <code>yarn add @leozodiac/swarm66</code>
+      </div>
+    </section>
+
+    <!-- FAQ Accordion -->
+    <section class="section-wrap" id="faq">
+      <div class="sec-head">
+        <span class="sec-eyebrow">FAQ</span>
+        <h2 class="sec-title swarm-item">Frequently Asked Questions</h2>
+      </div>
+
+      <div class="faq-list">
+        <div class="faq-item swarm-item">
+          <div class="faq-q" onclick="toggleFaq(this)">
+            <span>Does Swarm66 hurt SEO or initial page indexing?</span>
+            <span class="faq-icon">+</span>
+          </div>
+          <div class="faq-a">
+            No. Swarm66 operates strictly as a visual presentation overlay in the client's browser. Search engine crawlers (Googlebot, Bing) read your raw server-rendered HTML nodes without any alteration.
+          </div>
+        </div>
+
+        <div class="faq-item swarm-item">
+          <div class="faq-q" onclick="toggleFaq(this)">
+            <span>Does it work on smartphones and touch devices?</span>
+            <span class="faq-icon">+</span>
+          </div>
+          <div class="faq-a">
+            Yes! Swarm66 automatically captures <code>touchstart</code> and <code>touchmove</code> events. Idle cursors smoothly orbit around your finger or thumb on mobile screens, and layouts adapt fluidly.
+          </div>
+        </div>
+
+        <div class="faq-item swarm-item">
+          <div class="faq-q" onclick="toggleFaq(this)">
+            <span>What happens when all elements are constructed?</span>
+            <span class="faq-icon">+</span>
+          </div>
+          <div class="faq-a">
+            When all elements finish building, the grand finale triggers: all 18 cursors accelerate into the user's cursor position, swirling in an inward spiral, emitting micro ripples, and vanishing completely.
+          </div>
+        </div>
+
+        <div class="faq-item swarm-item">
+          <div class="faq-q" onclick="toggleFaq(this)">
+            <span>How does the single-agent corner dragging work?</span>
+            <span class="faq-icon">+</span>
+          </div>
+          <div class="faq-a">
+            Instead of all agents expanding from the center, one agent selects the top-left anchor and drags the opposite bottom-right corner diagonally across to size the shape dynamically, just like a designer in Figma!
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Floating Status Card (Matching Reference Pic) -->
+  <div class="floating-widget">
+    <span class="widget-icon">⚡</span>
+    <div>
+      <div class="widget-text">Swarm66 Engine Active</div>
+      <div class="widget-sub">Zero Dependencies · Localhost:3000</div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-brand">SWARM66</div>
+      <p style="margin-bottom: 8px;">
+        Universal Autonomous Cursor Swarm Visual Engine · Zero Dependencies
+      </p>
+      <p style="font-size: 12px; color: var(--text-dim);">
+        Published on <a href="https://www.npmjs.com/package/@leozodiac/swarm66" target="_blank" rel="noopener">npm</a> by <a href="https://www.npmjs.com/~leozodiac" target="_blank" rel="noopener">@leozodiac</a> · Licensed under MIT.
+      </p>
+    </div>
+  </footer>
+
+  <!-- Load bundled Swarm66 engine -->
+  <script src="./dist/index.global.js"></script>
+  <script>
+    let activeSwarm = null;
+
+    // Initialize Swarm66 live on the page
+    function initLiveSwarm() {
+      const enable = typeof Swarm66 === 'function'
+        ? Swarm66
+        : (typeof window !== 'undefined' ? (window.enableSwarm || window.swarm66 || window.DomSwarm) : null);
+
+      if (enable) {
+        activeSwarm = enable({
+          agentCount: 18,
+          teamSize: 4,
+          concurrency: 4,
+          copyPasteDuplicates: true,
+          hideOnStart: true,
+          buildOrder: 'top-to-bottom',
+          vanishAtCursor: true,
+          typewriterEffect: true,
+          showGuides: true,
+          showDimensions: true,
+          followMouse: true,
+          buildDuration: 500,
+        });
+      }
+    }
+
+    // Interactive Theme Switcher
+    function setTheme(theme) {
+      if (theme === 'cyan') {
+        document.documentElement.removeAttribute('data-theme');
+      } else {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+      localStorage.setItem('swarm66_theme', theme);
+    }
+
+    // Restore saved theme
+    const savedTheme = localStorage.getItem('swarm66_theme');
+    if (savedTheme) {
+      setTheme(savedTheme);
+    }
+
+    // Clipboard copy
+    function copyNpmCommand(btn) {
+      navigator.clipboard.writeText('npm i @leozodiac/swarm66').then(() => {
+        btn.textContent = 'Copied!';
+        btn.style.background = 'var(--accent)';
+        btn.style.color = '#000';
+        setTimeout(() => {
+          btn.textContent = 'copy';
+          btn.style.background = '';
+          btn.style.color = '';
+        }, 2000);
+      });
+    }
+
+    // Framework code switcher tabs
+    const codeSnippets = {
+      react: `<span class="code-hl-com">// React / Next.js Component Integration (SSR Safe)</span>
+<span class="code-hl-kw">import</span> { useEffect } <span class="code-hl-kw">from</span> <span class="code-hl-str">'react'</span>;
+<span class="code-hl-kw">import</span> { enableSwarm } <span class="code-hl-kw">from</span> <span class="code-hl-str">'@leozodiac/swarm66'</span>;
+
+<span class="code-hl-kw">export default function</span> <span class="code-hl-fn">LandingPage</span>() {
+  <span class="code-hl-fn">useEffect</span>(() =&gt; {
+    <span class="code-hl-kw">const</span> swarm = <span class="code-hl-fn">enableSwarm</span>({
+      agentCount: <span class="code-hl-fn">18</span>,
+      teamSize: <span class="code-hl-fn">4</span>,
+      hideOnStart: <span class="code-hl-kw">true</span>,
+      vanishAtCursor: <span class="code-hl-kw">true</span>,
+      typewriterEffect: <span class="code-hl-kw">true</span>,
+    });
+
+    <span class="code-hl-kw">return</span> () =&gt; swarm.<span class="code-hl-fn">destroy</span>();
+  }, []);
+
+  <span class="code-hl-kw">return</span> &lt;<span class="code-hl-fn">main</span>&gt;&lt;<span class="code-hl-fn">h1</span>&gt;Autonomous Swarm UI&lt;/<span class="code-hl-fn">h1</span>&gt;&lt;/<span class="code-hl-fn">main</span>&gt;;
+}`,
+      vue: `<span class="code-hl-com">// Vue 3 / Nuxt 3 &lt;script setup&gt;</span>
+&lt;<span class="code-hl-fn">script</span> setup lang="ts"&gt;
+<span class="code-hl-kw">import</span> { onMounted, onUnmounted } <span class="code-hl-kw">from</span> <span class="code-hl-str">'vue'</span>;
+<span class="code-hl-kw">import</span> { enableSwarm, type DomSwarmInstance } <span class="code-hl-kw">from</span> <span class="code-hl-str">'@leozodiac/swarm66'</span>;
+
+<span class="code-hl-kw">let</span> swarm: DomSwarmInstance | null = null;
+<span class="code-hl-fn">onMounted</span>(() =&gt; {
+  swarm = <span class="code-hl-fn">enableSwarm</span>({
+    agentCount: <span class="code-hl-fn">18</span>,
+    hideOnStart: <span class="code-hl-kw">true</span>,
+    vanishAtCursor: <span class="code-hl-kw">true</span>,
+  });
+});
+
+<span class="code-hl-fn">onUnmounted</span>(() =&gt; swarm?.<span class="code-hl-fn">destroy</span>());
+&lt;/<span class="code-hl-fn">script</span>&gt;`,
+      angular: `<span class="code-hl-com">// Angular Component Lifecycle</span>
+<span class="code-hl-kw">import</span> { Component, OnInit, OnDestroy } <span class="code-hl-kw">from</span> <span class="code-hl-str">'@angular/core'</span>;
+<span class="code-hl-kw">import</span> { enableSwarm, DomSwarmInstance } <span class="code-hl-kw">from</span> <span class="code-hl-str">'@leozodiac/swarm66'</span>;
+
+<span class="code-hl-kw">@Component</span>({
+  selector: <span class="code-hl-str">'app-root'</span>,
+  template: <span class="code-hl-str">'&lt;main&gt;&lt;h1&gt;Angular Swarm&lt;/h1&gt;&lt;/main&gt;'</span>
+})
+<span class="code-hl-kw">export class</span> <span class="code-hl-fn">AppComponent</span> <span class="code-hl-kw">implements</span> OnInit, OnDestroy {
+  <span class="code-hl-kw">private</span> swarm?: DomSwarmInstance;
+
+  <span class="code-hl-fn">ngOnInit</span>(): void {
+    <span class="code-hl-kw">this</span>.swarm = <span class="code-hl-fn">enableSwarm</span>({ hideOnStart: <span class="code-hl-kw">true</span>, rebuildOnRouteChange: <span class="code-hl-kw">true</span> });
+  }
+
+  <span class="code-hl-fn">ngOnDestroy</span>(): void {
+    <span class="code-hl-kw">this</span>.swarm?.<span class="code-hl-fn">destroy</span>();
+  }
+}`,
+      svelte: `<span class="code-hl-com">// Svelte / SvelteKit Component</span>
+&lt;<span class="code-hl-fn">script</span>&gt;
+  <span class="code-hl-kw">import</span> { onMount } <span class="code-hl-kw">from</span> <span class="code-hl-str">'svelte'</span>;
+  <span class="code-hl-kw">import</span> { enableSwarm } <span class="code-hl-kw">from</span> <span class="code-hl-str">'@leozodiac/swarm66'</span>;
+
+  <span class="code-hl-fn">onMount</span>(() =&gt; {
+    <span class="code-hl-kw">const</span> swarm = <span class="code-hl-fn">enableSwarm</span>({ hideOnStart: <span class="code-hl-kw">true</span> });
+    <span class="code-hl-kw">return</span> () =&gt; swarm.<span class="code-hl-fn">destroy</span>();
+  });
+&lt;/<span class="code-hl-fn">script</span>&gt;
+
+&lt;<span class="code-hl-fn">main</span>&gt;&lt;<span class="code-hl-fn">h1</span>&gt;Svelte Swarm UI&lt;/<span class="code-hl-fn">h1</span>&gt;&lt;/<span class="code-hl-fn">main</span>&gt;`,
+      php: `<span class="code-hl-com">&lt;!-- PHP / Laravel Blade (welcome.blade.php) --&gt;</span>
+&lt;<span class="code-hl-fn">script</span> src="https://cdn.jsdelivr.net/npm/@leozodiac/swarm66@1.0.1/dist/index.global.js"&gt;&lt;/<span class="code-hl-fn">script</span>&gt;
+&lt;<span class="code-hl-fn">script</span>&gt;
+  document.<span class="code-hl-fn">addEventListener</span>(<span class="code-hl-str">'DOMContentLoaded'</span>, () =&gt; {
+    window.<span class="code-hl-fn">enableSwarm</span>({
+      hideOnStart: <span class="code-hl-kw">true</span>,
+      typewriterEffect: <span class="code-hl-kw">true</span>,
+      vanishAtCursor: <span class="code-hl-kw">true</span>
+    });
+  });
+&lt;/<span class="code-hl-fn">script</span>&gt;`,
+      vanilla: `<span class="code-hl-com">&lt;!-- Vanilla HTML / WordPress / Webflow (Zero Build Tooling) --&gt;</span>
+&lt;<span class="code-hl-fn">script</span> src="https://cdn.jsdelivr.net/npm/@leozodiac/swarm66@1.0.1/dist/index.global.js"&gt;&lt;/<span class="code-hl-fn">script</span>&gt;
+&lt;<span class="code-hl-fn">script</span>&gt;
+  <span class="code-hl-kw">const</span> swarm = <span class="code-hl-fn">enableSwarm</span>({
+    agentCount: <span class="code-hl-fn">18</span>,
+    hideOnStart: <span class="code-hl-kw">true</span>,
+    vanishAtCursor: <span class="code-hl-kw">true</span>
+  });
+&lt;/<span class="code-hl-fn">script</span>&gt;`
+    };
+
+    function switchTab(framework) {
+      document.querySelectorAll('.fw-tab').forEach(b => b.classList.remove('active'));
+      const activeBtn = event.target;
+      if (activeBtn) activeBtn.classList.add('active');
+
+      const pre = document.getElementById('codeDisplay');
+      if (pre && codeSnippets[framework]) {
+        pre.innerHTML = `<code>${codeSnippets[framework]}</code>`;
+      }
+    }
+
+    // FAQ Accordion Toggle
+    function toggleFaq(btn) {
+      const item = btn.closest('.faq-item');
+      if (item) {
+        item.classList.toggle('open');
+      }
+    }
+
+    // Replay Button
+    window.addEventListener('DOMContentLoaded', () => {
+      initLiveSwarm();
+
+      const btnReplay = document.getElementById('btnReplayHero');
+      if (btnReplay) {
+        btnReplay.addEventListener('click', () => {
+          if (!activeSwarm) {
+            initLiveSwarm();
+          } else {
+            activeSwarm.replay();
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>
