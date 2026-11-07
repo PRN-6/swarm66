@@ -26,3 +26,9 @@ Thumbs.db
 # Scratch & temporary workspace files
 scratch/
 
+# Demo folders
+demo/
+demo1/
+demo2/
+demo3/
+
