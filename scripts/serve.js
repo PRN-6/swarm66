@@ -13,8 +13,21 @@ const MIME_TYPES = {
 };
 
 const server = http.createServer((req, res) => {
-  const urlPath = req.url === '/' ? '/demo/index.html' : req.url.split('?')[0];
-  const filePath = path.join(__dirname, '..', urlPath);
+  let urlPath = req.url.split('?')[0];
+  if (urlPath === '/' || urlPath === '') {
+    urlPath = '/demo/index.html';
+  }
+
+  let filePath = path.join(__dirname, '..', urlPath);
+
+  // Auto-resolve directories to index.html
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
+    filePath = path.join(filePath, 'index.html');
+  } else if (!fs.existsSync(filePath) && fs.existsSync(filePath + '.html')) {
+    filePath = filePath + '.html';
+  } else if (!fs.existsSync(filePath) && fs.existsSync(path.join(filePath, 'index.html'))) {
+    filePath = path.join(filePath, 'index.html');
+  }
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
@@ -31,8 +44,26 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`\n⚡ dom-swarm demo server running at:`);
-  console.log(`   Local:   http://localhost:${PORT}/demo/index.html\n`);
+let port = Number(process.env.PORT) || 3000;
+
+function startServer(p) {
+  server.listen(p, () => {
+    console.log(`\n⚡ dom-swarm multi-demo server running at:`);
+    console.log(`   Demo  (SaaS Landing):         http://localhost:${p}/demo/index.html`);
+    console.log(`   Demo1 (E-Commerce Store):     http://localhost:${p}/demo1/index.html`);
+    console.log(`   Demo2 (Developer Docs):       http://localhost:${p}/demo2/index.html`);
+    console.log(`   Demo3 (Creative Portfolio):   http://localhost:${p}/demo3/index.html\n`);
+  });
+}
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    port++;
+    server.listen(port);
+  } else {
+    console.error(err);
+  }
 });
+
+startServer(port);
 

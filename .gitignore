@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+package-lock.json
 
 # Build outputs
 dist/
@@ -22,7 +23,6 @@ Thumbs.db
 # Vitest
 .vitest/
 
-# Local reference & scratch
-refernce project source code/
+# Scratch & temporary workspace files
 scratch/
 

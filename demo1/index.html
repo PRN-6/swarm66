@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LUMEN Store — dom-swarm E-Commerce Demo 1</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --success: #10b981;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      line-height: 1.5;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+
+    /* Global Demo Navigation Banner */
+    .demo-bar {
+      background: #0f172a;
+      color: #fff;
+      padding: 10px 24px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #1e293b;
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+    }
+
+    .demo-links {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .demo-link {
+      color: #94a3b8;
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+
+    .demo-link:hover, .demo-link.active {
+      color: #38bdf8;
+    }
+
+    .replay-btn {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background-color 0.15s;
+    }
+
+    .replay-btn:hover {
+      background: #1d4ed8;
+    }
+
+    .container {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* E-Commerce Top Header */
+    header.store-header {
+      padding: 20px 0;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .store-logo {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .store-nav {
+      display: flex;
+      gap: 24px;
+    }
+
+    .store-nav a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+
+    .store-nav a:hover {
+      color: var(--text);
+    }
+
+    .store-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .cart-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text);
+    }
+
+    /* Hero Banner */
+    .hero-banner {
+      margin: 32px 0 48px;
+      background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+      border: 1px solid #dbeafe;
+      border-radius: 16px;
+      padding: 48px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 32px;
+    }
+
+    .hero-text {
+      max-width: 540px;
+    }
+
+    .hero-tag {
+      display: inline-block;
+      background: #dbeafe;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .hero-banner h1 {
+      font-size: 40px;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -1px;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+
+    .hero-banner p {
+      font-size: 16px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+    }
+
+    .btn-shop {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 12px 28px;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-shop:hover {
+      background: var(--accent-hover);
+    }
+
+    /* Product Grid */
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+
+    .section-head h2 {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+
+    .filter-tabs {
+      display: flex;
+      gap: 8px;
+    }
+
+    .tab-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      color: var(--text-muted);
+    }
+
+    .tab-btn.active {
+      background: var(--text);
+      color: #fff;
+      border-color: var(--text);
+    }
+
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 24px;
+      margin-bottom: 60px;
+    }
+
+    .product-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .product-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+    }
+
+    .product-img-box {
+      width: 100%;
+      height: 180px;
+      background: var(--surface);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      position: relative;
+    }
+
+    .product-category {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+      letter-spacing: 0.5px;
+    }
+
+    .product-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    .product-rating {
+      font-size: 12px;
+      color: #f59e0b;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .product-rating span {
+      color: var(--text-muted);
+    }
+
+    .product-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: auto;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    .product-price {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--text);
+    }
+
+    .btn-add {
+      background: var(--text);
+      color: #fff;
+      border: none;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-add:hover {
+      background: var(--accent);
+    }
+
+    /* Benefits Bar */
+    .benefits-bar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 24px;
+      margin-bottom: 60px;
+    }
+
+    .benefit-item h4 {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .benefit-item p {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* Footer */
+    footer.store-footer {
+      padding: 40px 0;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Multi-Demo Bar -->
+  <div class="demo-bar">
+    <div class="demo-links">
+      <span style="font-weight: 700; color: #fff;">dom-swarm Demos:</span>
+      <a href="../demo/index.html" class="demo-link">Demo (SaaS)</a>
+      <a href="../demo1/index.html" class="demo-link active">Demo 1 (E-Commerce)</a>
+      <a href="../demo2/index.html" class="demo-link">Demo 2 (Docs)</a>
+      <a href="../demo3/index.html" class="demo-link">Demo 3 (Agency)</a>
+    </div>
+    <button class="replay-btn" id="btnReplay">🔄 Replay Swarm</button>
+  </div>
+
+  <div class="container">
+    <!-- Store Header -->
+    <header class="store-header">
+      <div class="store-logo swarm-item">
+        <span>⚡ LUMEN</span>
+      </div>
+      <nav class="store-nav">
+        <a href="#audio" class="swarm-item">Audio</a>
+        <a href="#wearables" class="swarm-item">Wearables</a>
+        <a href="#computing" class="swarm-item">Computing</a>
+        <a href="#accessories" class="swarm-item">Accessories</a>
+      </nav>
+      <div class="store-actions">
+        <button class="cart-btn swarm-item">
+          <span>🛒 Cart</span>
+          <span style="background: var(--accent); color: #fff; padding: 1px 6px; border-radius: 10px; font-size: 11px;">2</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Hero Promotional Banner -->
+    <section class="hero-banner">
+      <div class="hero-text">
+        <span class="hero-tag swarm-item">Summer Flagship Release</span>
+        <h1 class="swarm-item">Acoustic Precision. Pure Spatial Sound.</h1>
+        <p class="swarm-item">
+          Experience ultra-low latency wireless audio with active adaptive noise cancellation and aerospace-grade titanium drivers.
+        </p>
+        <button class="btn-shop swarm-item">Shop Lumen Pro →</button>
+      </div>
+      <div class="product-img-box swarm-item" style="max-width: 380px; height: 240px;">
+        <svg width="84" height="84" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+          <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+        </svg>
+      </div>
+    </section>
+
+    <!-- Product Showcase (Same-Sized Cards demonstrate ⌥Drag Duplication & Text Editing) -->
+    <section>
+      <div class="section-head">
+        <h2 class="swarm-item">Trending Gear</h2>
+        <div class="filter-tabs">
+          <button class="tab-btn active swarm-item">All Gear</button>
+          <button class="tab-btn swarm-item">Audio</button>
+          <button class="tab-btn swarm-item">Wearables</button>
+        </div>
+      </div>
+
+      <div class="product-grid">
+        <!-- Product 1 -->
+        <div class="product-card swarm-item">
+          <div class="product-img-box">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.8">
+              <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+              <line x1="12" y1="18" x2="12.01" y2="18"></line>
+            </svg>
+          </div>
+          <span class="product-category">Audio</span>
+          <h3 class="product-title">Lumen Studio Headphones</h3>
+          <div class="product-rating">★★★★★ <span>(94)</span></div>
+          <div class="product-footer">
+            <div class="product-price">$249.00</div>
+            <button class="btn-add">Add to Cart</button>
+          </div>
+        </div>
+
+        <!-- Product 2 (Same dimensions -> Copy-Paste Duplication with Hand Cursor!) -->
+        <div class="product-card swarm-item">
+          <div class="product-img-box">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="1.8">
+              <circle cx="12" cy="12" r="7"></circle>
+              <polyline points="12 9 12 12 13.5 13.5"></polyline>
+              <path d="M16.51 17.35l-.35 3.83a2 2 0 0 1-2 1.82H9.83a2 2 0 0 1-2-1.82l-.35-3.83m.01-10.7l.35-3.83A2 2 0 0 1 9.83 1h4.35a2 2 0 0 1 2 1.82l.35 3.83"></path>
+            </svg>
+          </div>
+          <span class="product-category">Wearables</span>
+          <h3 class="product-title">Lumen Pulse Smartwatch</h3>
+          <div class="product-rating">★★★★★ <span>(142)</span></div>
+          <div class="product-footer">
+            <div class="product-price">$299.00</div>
+            <button class="btn-add">Add to Cart</button>
+          </div>
+        </div>
+
+        <!-- Product 3 (Same dimensions -> Copy-Paste Duplication with Hand Cursor!) -->
+        <div class="product-card swarm-item">
+          <div class="product-img-box">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.8">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+          </div>
+          <span class="product-category">Computing</span>
+          <h3 class="product-title">UltraGlide Pro Display</h3>
+          <div class="product-rating">★★★★☆ <span>(68)</span></div>
+          <div class="product-footer">
+            <div class="product-price">$599.00</div>
+            <button class="btn-add">Add to Cart</button>
+          </div>
+        </div>
+
+        <!-- Product 4 (Same dimensions -> Copy-Paste Duplication with Hand Cursor!) -->
+        <div class="product-card swarm-item">
+          <div class="product-img-box">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="1.8">
+              <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path>
+              <path d="M12 12v9"></path>
+              <path d="m8 17 4 4 4-4"></path>
+            </svg>
+          </div>
+          <span class="product-category">Accessories</span>
+          <h3 class="product-title">MagSafe Fast Power Hub</h3>
+          <div class="product-rating">★★★★★ <span>(210)</span></div>
+          <div class="product-footer">
+            <div class="product-price">$89.00</div>
+            <button class="btn-add">Add to Cart</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Value Propositions -->
+    <div class="benefits-bar">
+      <div class="benefit-item swarm-item">
+        <h4>⚡ Express 2-Day Delivery</h4>
+        <p>Free tracked courier shipping on all orders over $75.</p>
+      </div>
+      <div class="benefit-item swarm-item">
+        <h4>🛡️ 2-Year Warranty</h4>
+        <p>Comprehensive hardware replacement and 24/7 technical support.</p>
+      </div>
+      <div class="benefit-item swarm-item">
+        <h4>🔄 30-Day Money Back</h4>
+        <p>Risk-free home trials with complimentary return postage.</p>
+      </div>
+      <div class="benefit-item swarm-item">
+        <h4>🌱 Carbon Neutral</h4>
+        <p>100% recyclable packaging and net-zero transit offsets.</p>
+      </div>
+    </div>
+
+    <!-- Store Footer -->
+    <footer class="store-footer">
+      <p class="swarm-item">© 2026 LUMEN Technologies Inc. All rights reserved.</p>
+      <p class="swarm-item" style="margin-top: 6px;">Powered by <strong>dom-swarm</strong> universal DOM engine.</p>
+    </footer>
+  </div>
+
+  <!-- Load bundled dom-swarm -->
+  <script src="../dist/index.global.js"></script>
+  <script>
+    let swarm = null;
+
+    function initSwarm() {
+      const enable = typeof DomSwarm === 'function'
+        ? DomSwarm
+        : (typeof DomSwarm !== 'undefined' ? (DomSwarm.enableSwarm || DomSwarm.default) : null);
+
+      if (enable) {
+        swarm = enable({
+          agentCount: 18,
+          teamSize: 4,
+          concurrency: 4,
+          hideOnStart: true,
+          copyPasteDuplicates: true,
+          vanishAtCursor: true,
+          typewriterEffect: true,
+        });
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initSwarm();
+
+      const btn = document.getElementById('btnReplay');
+      if (btn) {
+        btn.addEventListener('click', () => {
+          if (!swarm) {
+            initSwarm();
+          } else {
+            swarm.replay();
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>
+

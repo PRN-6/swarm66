@@ -16,136 +16,77 @@ export type AgentState =
   | 'CONVERGING_TO_USER'
   | 'VANISHED';
 
-export type AgentType = 'pointer' | 'ibeam' | 'crosshair';
-
-export type CursorShape =
-  | 'arrow'
-  | 'dup'
+export type AgentType =
+  | 'pointer'
   | 'pen'
-  | 'pen-add'
-  | 'pen-close'
-  | 'cross'
+  | 'frame'
+  | 'media'
+  | 'button'
+  | 'code'
   | 'ibeam'
-  | 'ew'
-  | 'ns';
+  | 'hand'
+  | 'duplicate';
 
-export type TaskType = 'path' | 'rect' | 'text' | 'guide' | 'dup' | 'edit';
-
-export interface OverlayBoxSpec {
-  t: 'box';
-  b: { left: number; top: number; width: number; height: number };
-  handles?: boolean;
-  badge?: string;
-  rulerLines?: boolean;
-  underline?: { left: number; top: number; width: number; height: number };
-  color?: 'blue' | 'red';
-}
-
-export interface OverlayMeasureSpec {
-  t: 'measure';
-  a: Vector2D;
-  b: Vector2D;
-  label: string;
-}
-
-export interface OverlayGuideSpec {
-  t: 'guide';
-  axis: 'x' | 'y';
-  pos: number;
-  flash?: number;
-  opacity?: number;
-  dragging?: boolean;
-}
-
-export interface OverlayPathSpec {
-  t: 'path';
-  points: Vector2D[];
-  cursorPos?: Vector2D | null;
-  closed?: boolean;
-}
-
-export type OverlayItem =
-  | OverlayBoxSpec
-  | OverlayMeasureSpec
-  | OverlayGuideSpec
-  | OverlayPathSpec;
+export type ElementCategory = 'text' | 'container' | 'media' | 'button' | 'code' | 'input';
 
 export type BoundingBoxType = 'blue' | 'red';
 
 export type BuildOrder = 'top-to-bottom' | 'random' | 'viewport';
 
+export type BorderRole = 'top' | 'right' | 'bottom' | 'left' | 'center';
+
+export type TaskPhase = 'MOVING' | 'CLONING' | 'EXPANDING' | 'BUILDING' | 'DONE';
+
 export interface SwarmConfig {
   /**
    * Total number of autonomous cursor agents in the swarm.
-   * @default 36
+   * @default 18
    */
   agentCount?: number;
 
   /**
+   * Number of agents assigned to each construction team.
+   * @default 4
+   */
+  teamSize?: number;
+
+  /**
+   * When multiple elements/containers share the same dimensions,
+   * animate a Figma-style copy-paste duplication and live editing sequence.
+   * @default true
+   */
+  copyPasteDuplicates?: boolean;
+
+  /**
    * Vibrant color palette for the cursor agents and wireframes.
-   * @default ['#00A3FF', '#00C48C', '#FFAA00', '#FF007A', '#7B61FF', '#F24822', '#00E5FF', '#69DB7C']
+   * @default ['#FF5722', '#00BCD4', '#8BC34A', '#9C27B0', '#FFC107', '#E91E63', '#2196F3']
    */
   colors?: string[];
 
   /**
    * CSS selector matching DOM elements to reverse-engineer and construct.
-   * @default '.swarm-item, .price-card, .interactive-card, .metric-card, .code-box, .hero-pill, header.navbar, .hero h1, .hero p, .hero-actions button, .swarm-card'
+   * @default 'nav, header, h1, h2, h3, h4, h5, h6, p, button, a, img, pre, code, .swarm-item, .price-card, .interactive-card, .metric-card'
    */
   selector?: string;
 
   /**
    * CSS selector to exclude elements from swarm construction.
-   * @default '[data-no-swarm], script, style, noscript, dom-swarm-overlay, .swarm-hud, .swarm-initial-hero'
+   * @default '[data-no-swarm], script, style, noscript, dom-swarm-overlay, .swarm-hud'
    */
   ignoreSelector?: string;
 
   /**
-   * Whether to construct elements strictly as the user scrolls into view (not automatically).
-   * @default true
-   */
-  buildOnScroll?: boolean;
-
-  /**
-   * Whether to initially hide all scroll-target elements below the fold until the user scrolls to them.
+   * Whether to initially hide all detected elements on page load, keeping the native background intact,
+   * so the swarm builds the whole page from a blank canvas.
    * @default true
    */
   hideOnStart?: boolean;
 
   /**
-   * Show Figma-style top and left measurement rulers with active coordinate segments during construction.
-   * @default true
-   */
-  showRulers?: boolean;
-
-  /**
-   * Show Figma-style full-screen horizontal and vertical red/cyan alignment guides and crosshairs.
-   * @default true
-   */
-  showGuides?: boolean;
-
-  /**
-   * Show dimensional pixel badge (e.g., "580 × 130", "184 × 48") on selection bounding boxes.
-   * @default true
-   */
-  showDimensions?: boolean;
-
-  /**
-   * Simulate a fast typewriter reveal effect for text nodes (p, h1-h6, code, etc.) with I-beam cursor.
-   * @default true
-   */
-  typewriterEffect?: boolean;
-
-  /**
-   * Number of elements being constructed simultaneously. Set to 1 for sequential one-by-one element construction.
-   * @default 1
+   * Number of elements being constructed simultaneously in parallel by teams.
+   * @default 4
    */
   concurrency?: number;
-
-  /**
-   * Whether agents accelerate and converge into the user cursor once all elements are constructed.
-   * @default true
-   */
-  vanishAtCursor?: boolean;
 
   /**
    * Order in which detected elements are constructed.
@@ -154,10 +95,34 @@ export interface SwarmConfig {
   buildOrder?: BuildOrder;
 
   /**
-   * Whether to display text name badges alongside cursor avatars.
-   * @default false
+   * Once all page elements are constructed, all cursors converge to the user's cursor and vanish.
+   * @default true
    */
-  showAgentNames?: boolean;
+  vanishAtCursor?: boolean;
+
+  /**
+   * Whether to construct elements automatically when they enter the viewport via scrolling.
+   * @default true
+   */
+  buildOnScroll?: boolean;
+
+  /**
+   * Simulate a fast typewriter reveal effect for text nodes (p, h1-h6, code, etc.).
+   * @default true
+   */
+  typewriterEffect?: boolean;
+
+  /**
+   * Show Figma-style full-screen horizontal and vertical alignment guides during construction.
+   * @default true
+   */
+  showGuides?: boolean;
+
+  /**
+   * Show dimensional pixel badge (e.g., "380 × 48") on selection bounding boxes.
+   * @default true
+   */
+  showDimensions?: boolean;
 
   /**
    * Whether cursor agents flock around and follow the user's active cursor/touch when idle.
@@ -179,7 +144,7 @@ export interface SwarmConfig {
 
   /**
    * Duration in milliseconds spent constructing each element before moving to the next.
-   * @default 850
+   * @default 550
    */
   buildDuration?: number;
 
@@ -212,12 +177,6 @@ export interface SwarmConfig {
    * @default 16
    */
   typewriterSpeed?: number;
-
-  /**
-   * Optional custom labels or names displayed alongside cursor avatars if showAgentNames is true.
-   * @default ['Figma AI', 'Cursor-01', 'Copilot', 'Agent-α', 'Agent-β', 'PixelCraft', 'Architect', 'DevBot']
-   */
-  customAgentNames?: string[];
 
   /**
    * Mount container for the Shadow DOM overlay. Defaults to `document.body`.
@@ -274,25 +233,21 @@ export interface ConstructionTask {
   rect: DOMRect;
   boxType: BoundingBoxType;
   assignedAgents: number[];
-  targetPositions: Vector2D[];
+  borderRoles: BorderRole[];
+  phase: TaskPhase;
+  isCopyPaste: boolean;
+  sourceRect?: DOMRect;
   startTime: number;
+  expandStartTime: number;
+  expandDuration: number;
   duration: number;
   isText: boolean;
+  category?: ElementCategory;
+  cursorType?: AgentType;
   boxElement?: HTMLElement;
+  cloneElement?: HTMLElement;
   completed: boolean;
   cancelEffect?: () => void;
-  // Enhanced agentic task spec
-  spec?: {
-    type: TaskType;
-    sourceElement?: HTMLElement;
-    axis?: 'x' | 'y';
-    pos?: number;
-    guideline?: { axis: 'x' | 'y'; pos: number };
-    dx?: number;
-    dy?: number;
-    pathPoints?: Vector2D[];
-  };
-  deps?: string[];
 }
 
 export interface SwarmMetrics {
@@ -308,59 +263,15 @@ export interface SwarmMetrics {
 }
 
 export interface DomSwarmInstance {
-  /**
-   * Terminate the swarm engine, remove the Shadow DOM overlay, and restore all native DOM styles.
-   */
   destroy(): void;
-
-  /**
-   * Pause the Boids physics loop and active construction tasks.
-   */
   pause(): void;
-
-  /**
-   * Resume the Boids physics loop and active construction tasks.
-   */
   resume(): void;
-
-  /**
-   * Replays the entire swarm construction from the beginning:
-   * clears elements back to blank, spawns cursors, and builds while scrolling.
-   */
   replay(): void;
-
-  /**
-   * Manually dispatch autonomous agents to construct a specific DOM element immediately.
-   */
   buildElement(element: HTMLElement): Promise<void>;
-
-  /**
-   * Retrieve the current read-only configuration.
-   */
   getConfig(): Readonly<ResolvedSwarmConfig>;
-
-  /**
-   * Update configuration options dynamically at runtime.
-   */
   updateConfig(newConfig: Partial<SwarmConfig>): void;
-
-  /**
-   * Check whether the swarm is currently paused.
-   */
   isPaused(): boolean;
-
-  /**
-   * Check whether the swarm has finished building the page.
-   */
   isFinished(): boolean;
-
-  /**
-   * Current number of active agents.
-   */
   getActiveAgentCount(): number;
-
-  /**
-   * Retrieve live diagnostic performance telemetry.
-   */
   getMetrics(): SwarmMetrics;
 }

@@ -1,5 +1,5 @@
 import { BuilderEffects } from './BuilderEffects';
-import { BuildOrder, ConstructionTask, TaskType } from '../types';
+import { BuildOrder } from '../types';
 
 export interface DomScannerOptions {
   selector: string;
@@ -12,7 +12,7 @@ export interface DomScannerOptions {
 
 /**
  * Scans, indexes, and prepares host DOM elements for live swarm construction,
- * filtering out nested redundant children and sorting elements top-to-bottom.
+ * sorting elements in natural visual sequence (top-to-bottom).
  */
 export class DomScanner {
   private intersectionObserver: IntersectionObserver | null = null;
@@ -44,35 +44,35 @@ export class DomScanner {
     if (typeof document === 'undefined') return [];
 
     try {
-      const allCandidates = Array.from(
+      const candidates = Array.from(
         document.querySelectorAll<HTMLElement>(this.options.selector)
       );
 
       const validElements: HTMLElement[] = [];
 
-      for (let i = 0; i < allCandidates.length; i++) {
-        const el = allCandidates[i];
+      for (let i = 0; i < candidates.length; i++) {
+        const el = candidates[i];
         if (!el || this.shouldIgnoreElement(el)) continue;
 
         const rect = el.getBoundingClientRect();
-        if (rect.width < 10 || rect.height < 10) continue;
-
-        // Prevent targeting child elements when their parent card/container is already targeted
-        const isNestedUnderTarget = allCandidates.some(
-          (parent) => parent !== el && parent.contains(el) && this.isBlockContainer(parent)
-        );
-        if (isNestedUnderTarget) continue;
+        // Ignore zero-size or invisible elements
+        if (rect.width < 8 || rect.height < 8) continue;
 
         validElements.push(el);
       }
 
-      // Sort by build order (default: top-to-bottom in document)
+      // Sort by build order (default: top-to-bottom)
       if (this.options.buildOrder === 'top-to-bottom') {
         const scrollY = window.scrollY || window.pageYOffset || 0;
         validElements.sort((a, b) => {
+          // Ancestors must always construct before their children
+          if (a.contains(b)) return -1;
+          if (b.contains(a)) return 1;
+
           const topA = a.getBoundingClientRect().top + scrollY;
           const topB = b.getBoundingClientRect().top + scrollY;
-          if (Math.abs(topA - topB) < 20) {
+          if (Math.abs(topA - topB) < 15) {
+            // If roughly on the same vertical line, order left-to-right
             return a.getBoundingClientRect().left - b.getBoundingClientRect().left;
           }
           return topA - topB;
@@ -97,34 +97,6 @@ export class DomScanner {
   }
 
   /**
-   * Identifies if an element is a distinct component container (card, box, section).
-   */
-  private isBlockContainer(el: HTMLElement): boolean {
-    const tag = el.tagName.toLowerCase();
-    // Buttons, links, and text elements must always be constructed as independent elements
-    if (
-      tag === 'button' ||
-      tag === 'a' ||
-      tag === 'h1' ||
-      tag === 'h2' ||
-      tag === 'h3' ||
-      tag === 'h4' ||
-      tag === 'h5' ||
-      tag === 'h6' ||
-      tag === 'p' ||
-      tag === 'code'
-    ) {
-      return false;
-    }
-
-    const classList = el.className || '';
-    if (classList.includes('card') || classList.includes('terminal') || classList.includes('spec-terminal')) {
-      return true;
-    }
-    return tag === 'section' || tag === 'article';
-  }
-
-  /**
    * Intersection observer to trigger scroll-based builds if configured.
    */
   private setupIntersectionObserver(): void {
@@ -144,7 +116,7 @@ export class DomScanner {
       },
       {
         root: null,
-        rootMargin: '0px 0px 100px 0px',
+        rootMargin: '0px 0px 50px 0px',
         threshold: 0.05,
       }
     );
@@ -204,76 +176,6 @@ export class DomScanner {
     if (style.display === 'none' || style.visibility === 'hidden') return true;
 
     return false;
-  }
-
-  /**
-   * Creates a structured dependency-aware task graph for agentic construction:
-   * Classifies tasks into 'rect', 'text', 'path', 'dup', and 'guide'.
-   */
-  public buildTaskGraph(elements: HTMLElement[]): ConstructionTask[] {
-    const tasks: ConstructionTask[] = [];
-    const elementToId = new Map<HTMLElement, string>();
-
-    for (let i = 0; i < elements.length; i++) {
-      const el = elements[i];
-      if (!el) continue;
-      const rect = el.getBoundingClientRect();
-      const id = `task-${i}`;
-      elementToId.set(el, id);
-
-      const isText = BuilderEffects.isTextElement(el);
-      const isSvg = el.tagName.toLowerCase() === 'svg' || el.querySelector('path') !== null;
-
-      // Check if this element is a repeating duplicate of an earlier sibling
-      const prevSibling = el.previousElementSibling as HTMLElement | null;
-      const isDuplicate =
-        prevSibling &&
-        elementToId.has(prevSibling) &&
-        prevSibling.tagName === el.tagName &&
-        Math.abs(prevSibling.getBoundingClientRect().width - rect.width) < 25 &&
-        Math.abs(prevSibling.getBoundingClientRect().height - rect.height) < 25;
-
-      let taskType: TaskType = 'rect';
-      let sourceElement: HTMLElement | undefined = undefined;
-
-      if (isDuplicate && prevSibling) {
-        taskType = 'dup';
-        sourceElement = prevSibling;
-      } else if (isText) {
-        taskType = 'text';
-      } else if (isSvg) {
-        taskType = 'path';
-      } else {
-        taskType = 'rect';
-      }
-
-      const deps: string[] = [];
-      if (sourceElement && elementToId.has(sourceElement)) {
-        deps.push(elementToId.get(sourceElement)!);
-      }
-
-      tasks.push({
-        id,
-        element: el,
-        rect,
-        boxType: i % 2 === 0 ? 'blue' : 'red',
-        assignedAgents: [],
-        targetPositions: [],
-        startTime: 0,
-        duration: 450,
-        isText,
-        completed: false,
-        spec: {
-          type: taskType,
-          sourceElement,
-          dx: sourceElement ? rect.left - sourceElement.getBoundingClientRect().left : 0,
-          dy: sourceElement ? rect.top - sourceElement.getBoundingClientRect().top : 0,
-        },
-        deps,
-      });
-    }
-
-    return tasks;
   }
 
   /**

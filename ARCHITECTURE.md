@@ -74,10 +74,8 @@ stateDiagram-v2
    - If the element is a pure text node (`p`, `h1`-`h6`, `code`), morphs icon to an `I-beam` text cursor.
 
 3. **`CONSTRUCTING_ELEMENT`**:
-   - The agent locks directly onto its assigned corner handle or edge of the bounding box (`tl`, `br`, `tr`, `bl`, or `ibeam`).
-   - Active scroll tracking keeps the cursor rigidly anchored to the element's live `getBoundingClientRect()` coordinates every frame.
-   - For block elements, multiple agents grip the 4 corners (`tl`, `br`, `tr`, `bl`), visibly dragging and holding the bounding box into place.
-   - For text nodes, the agent morphs into a colored `I-beam` and advances along the text baseline during character typing.
+   - The agent holds position over the element while construction animations execute.
+   - Pointer arrow or I-beam exhibits subtle micro-movements to simulate live inspection or typing.
 
 4. **`RETURNING_TO_SWARM`**:
    - Construction concludes, bounding boxes dissolve, and the agent receives an impulse steering it back toward the flock cloud to be ready for the next queue task.

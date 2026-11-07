@@ -15,11 +15,14 @@
 1. **Initial Blank Canvas:**
    When installed in any project (React, Next.js, Vue, Svelte, or Vanilla HTML), `dom-swarm` indexes every element on the page. The page begins completely blank while preserving the site's natural background colors and layout flow.
 2. **Autonomous Swarm Construction:**
-   A squad of 15–30 vibrant Figma-style AI cursors burst in and systematically build the page from top to bottom:
+   A squad of 18 vibrant Figma-style AI cursors organized into 4-member squads systematically builds the page:
+   - **Focused Tool Cursors:**
+     - ↖️ **Primary Arrow Pointer:** The clean, classic cursor used across the swarm for flocking, border navigation, and layout framing.
+     - ✋ **Hand Tool (Single Drag Cursor):** Exactly 1 cursor grabs and slides duplicate wireframes across the canvas during copy-pasting.
+     - ✏️ **Pencil / Pen Tool:** The lead agent uses the drafting pencil tool with micro sketching vibration to write headings and typewriter text.
    - Snapping **Figma Blue Selection Bounding Boxes** (`#0d99ff`) with live pixel dimension badges (`380 × 48`) and corner resize handles.
    - Drawing **Red Alignment Wireframes** (`#f24822`) with full-screen horizontal and vertical guide lines.
-   - Morphing cursors into **`I-beam`** text tools to type out headings and paragraphs letter by letter.
-   - Scaling and fading in buttons, interactive cards, and images with realistic inspection and construction motions.
+   - Active cursor-drawn box expansion: agents actively pull the 4 corners outward from `0 × 0` before revealing content.
 3. **Grand Finale — Convergence & Vanishing:**
    As soon as the entire page is constructed, the swarm accelerates and swirls directly into the user's live mouse cursor, shrinking and vanishing into thin air—leaving the user with a 100% interactive, pristine webpage!
 
@@ -173,13 +176,12 @@ Pass an options object to `enableSwarm(config)` or `new DomSwarm(config)`:
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `buildOnScroll` | `boolean` | `true` | When true, elements are constructed live strictly as the user scrolls them into the viewport. When false, builds through queue. |
-| `showRulers` | `boolean` | `true` | Displays Figma top and left measurement rulers with real-time coordinate segments during construction. |
 | `hideOnStart` | `boolean` | `true` | Starts the webpage blank while preserving the background, allowing the swarm to construct it live. |
 | `vanishAtCursor` | `boolean` | `true` | Once all elements are constructed, all cursors accelerate into the user's cursor and vanish. |
 | `concurrency` | `number` | `2` | Number of elements constructed in parallel waves. |
 | `buildOrder` | `'top-to-bottom' \| 'random' \| 'viewport'` | `'top-to-bottom'` | Sequence in which elements are constructed. |
-| `agentCount` | `number` | `20` | Total number of autonomous cursor agents in the swarm. |
+| `agentCount` | `number` | `18` | Total number of autonomous cursor agents in the swarm. |
+| `teamSize` | `number` | `4` | Number of agents in each team (dispatched to the 4 borders of elements). |
 | `colors` | `string[]` | `['#FF5722', '#00BCD4', '#8BC34A', '#9C27B0', '#FFC107', '#E91E63', '#2196F3']` | Vibrant color palette for cursors, wireframes, and name tags. |
 | `selector` | `string` | `'nav, header, h1, h2, h3, h4, h5, h6, p, button, a, img, pre, code, .swarm-item'` | CSS selector targeting elements to construct. |
 | `ignoreSelector` | `string` | `'[data-no-swarm], script, style, noscript, dom-swarm-overlay, .swarm-hud'` | CSS selector to exclude elements from swarm construction. |
@@ -190,8 +192,7 @@ Pass an options object to `enableSwarm(config)` or `new DomSwarm(config)`:
 | `maxSpeed` | `number` | `9.0` | Maximum agent velocity in pixels per frame. |
 | `maxForce` | `number` | `0.38` | Maximum steering force applied during Boids calculations. |
 | `buildDuration` | `number` | `600` | Duration (in milliseconds) spent constructing each element before moving to the next. |
-| `showAgentNames` | `boolean` | `false` | When true, renders text name badges beside cursor avatars; when false, renders clean, minimalist cursors. |
-| `customAgentNames` | `string[]` | `['Figma AI', 'Cursor-01', 'Copilot', 'Agent-α', 'Agent-β', 'PixelCraft', 'Architect', 'DevBot']` | List of avatar label badges rendered alongside cursors if `showAgentNames` is true. |
+| `customAgentNames` | `string[]` | `['Figma AI', 'Cursor-01', 'Copilot', 'Agent-α', 'Agent-β', 'PixelCraft', 'Architect', 'DevBot']` | List of avatar label badges rendered alongside cursors. |
 | `onAllElementsConstructed` | `() => void` | `undefined` | Callback fired when every detected element has finished construction. |
 | `onSwarmVanished` | `() => void` | `undefined` | Callback fired when all cursors have converged into the user's cursor and vanished. |
 

@@ -73,3 +73,34 @@
   - [x] Live telemetry HUD (active agents, current FPS, state counts).
 - [x] Author exhaustive `ARCHITECTURE.md` with system diagrams, lifecycle models, and performance considerations.
 - [x] Author complete `README.md` with npm badges, quick start, framework guides (React, Next.js, Vue), and full API reference table.
+
+---
+
+## Phase 6: Autonomous Team Coordination, Active Border Drawing & Copy-Paste Duplication
+- [x] **18 Swarm Agents in 4-Agent Squads:**
+  - [x] Partition 18 agents into squads with `teamSize: 4` and parallel concurrency (`concurrency: 4`).
+  - [x] Clean cursor visual design without text name tags/badges (`transform-origin: 3px 2px`).
+- [x] **Upright Smooth Movement:**
+  - [x] Remove cursor spinning/rotation during work (`headingAngle = 0`).
+  - [x] Sinusoidal border traversal along box edges (`t = (sin(p*2π)+1)/2`).
+- [x] **Active Cursor-Drawn Box Animation:**
+  - [x] Elements start at 0×0 center coordinate and the 4 corner agents actively drag/expand the box outward with cubic easing.
+- [x] **Figma-Style Copy-Paste & Edit Duplication:**
+  - [x] Detect same-sized elements/containers (`widthDiff <= 16 && heightDiff <= 16`).
+  - [x] Animate sliding `Duplicate ⌥Drag` ghost wireframe box from source to destination.
+  - [x] Morph cursor to I-beam for live typewriter text editing upon arrival.
+- [x] **Grand Finale Convergence:**
+  - [x] When page finishes construction, all 18 cursors accelerate into the user's cursor position.
+  - [x] Inward spiral, micro-ripple particle emission, and complete vanishing.
+- [x] **Clean Minimal Testbed UI:**
+  - [x] Removed bulky HUD overlay from `demo/index.html`; retained clean `🔄 Replay Swarm` navbar trigger.
+
+---
+
+## Phase 7: Multi-Website Demonstrations & Cross-Site Compatibility
+- [x] **Demo (SaaS Landing Page):** Dark-mode AI SaaS product landing with metrics, features, code block, pricing grid.
+- [x] **Demo 1 (E-Commerce Storefront):** Crisp light-mode store with promo banner, product cards, star reviews, cart drawer, and single-hand copy-paste dragging.
+- [x] **Demo 2 (Developer Documentation):** 3-column developer portal with sticky sidebar navigation, callout alerts, syntax-highlighted code blocks, parameter tables, and breadcrumbs.
+- [x] **Demo 3 (Creative Agency & Portfolio):** Editorial high-contrast design with giant typography, case study cards, capability matrix, and interactive project inquiry form.
+- [x] **Multi-Demo Switcher Navigation:** Top banner on all demo pages enabling seamless one-click switching and swarm replay.
+

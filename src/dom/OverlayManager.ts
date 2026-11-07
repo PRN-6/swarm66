@@ -1,48 +1,15 @@
-import { AgentType, CursorShape, OverlayItem } from '../types';
-
-export interface BoxRect {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-  right?: number;
-  bottom?: number;
-}
-
-export interface ActiveRulerSegment {
-  left: number;
-  width: number;
-  top: number;
-  height: number;
-}
-
-const OP_HOTSPOTS: Record<CursorShape, [number, number]> = {
-  arrow: [5, 3.5],
-  dup: [5, 3.5],
-  pen: [3, 3],
-  'pen-add': [3, 3],
-  'pen-close': [3, 3],
-  cross: [12, 12],
-  ibeam: [12, 12],
-  ew: [12, 12],
-  ns: [12, 12],
-};
-
-const PI_ARROW =
-  'M4.6 3.9 C4.2 3.1 4.9 2.4 5.7 2.8 L20.6 9.4 C21.5 9.8 21.4 11.1 20.4 11.3 L13.9 12.9 C13.4 13 13 13.4 12.9 13.9 L11.3 20.4 C11.1 21.4 9.8 21.5 9.4 20.6 Z';
+import { AgentType, BoundingBoxType } from '../types';
 
 /**
- * Manages the open Shadow DOM overlay container, Figma rulers,
- * full-screen red & cyan alignment guide lines, SVG cursors, and selection bounding boxes.
+ * Manages the open Shadow DOM overlay container, scoped CSS styles,
+ * SVG cursor rendering, Figma selection boxes, and alignment guides.
  */
 export class OverlayManager {
   private hostElement: HTMLElement | null = null;
+  private shadowRoot: ShadowRoot | null = null;
   private agentsLayer: HTMLElement | null = null;
-  private svgLayer: SVGSVGElement | null = null;
-  private badgesLayer: HTMLElement | null = null;
-  private rulersContainer: HTMLElement | null = null;
-  private topRulerSegmentsEl: HTMLElement | null = null;
-  private leftRulerSegmentsEl: HTMLElement | null = null;
+  private overlaysLayer: HTMLElement | null = null;
+  private guidesLayer: HTMLElement | null = null;
   private mounted = false;
 
   constructor(private container: HTMLElement = typeof document !== 'undefined' ? document.body : (null as any)) {}
@@ -50,7 +17,7 @@ export class OverlayManager {
   /**
    * Mounts the full-screen Shadow DOM overlay.
    */
-  public mount(showRulers = true): boolean {
+  public mount(): boolean {
     if (this.mounted || typeof document === 'undefined') return false;
 
     // Create root host element
@@ -76,38 +43,17 @@ export class OverlayManager {
     const wrapper = document.createElement('div');
     wrapper.className = 'swarm-root';
 
-    // 1. Figma Rulers Layer
-    if (showRulers) {
-      const rulers = this.createRulers();
-      wrapper.appendChild(rulers);
-      this.rulersContainer = rulers;
-    }
-
-    // 2. Alignment guides layer
+    // Alignment guides layer (bottom)
     const guides = document.createElement('div');
     guides.className = 'swarm-guides-layer';
     wrapper.appendChild(guides);
 
-    // 3. Dynamic SVG overlays layer
+    // Bounding boxes layer (middle)
     const overlays = document.createElement('div');
     overlays.className = 'swarm-overlays-layer';
-
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('class', 'swarm-svg-canvas');
-    svg.style.position = 'absolute';
-    svg.style.inset = '0';
-    svg.style.width = '100%';
-    svg.style.height = '100%';
-    svg.style.overflow = 'visible';
-    overlays.appendChild(svg);
-
-    const badges = document.createElement('div');
-    badges.className = 'swarm-badges-layer';
-    overlays.appendChild(badges);
-
     wrapper.appendChild(overlays);
 
-    // 4. Agents cursor layer (top)
+    // Agents cursor layer (top)
     const agents = document.createElement('div');
     agents.className = 'swarm-agents-layer';
     wrapper.appendChild(agents);
@@ -119,8 +65,9 @@ export class OverlayManager {
     targetParent.appendChild(host);
 
     this.hostElement = host;
-    this.svgLayer = svg;
-    this.badgesLayer = badges;
+    this.shadowRoot = shadow;
+    this.guidesLayer = guides;
+    this.overlaysLayer = overlays;
     this.agentsLayer = agents;
     this.mounted = true;
 
@@ -128,128 +75,11 @@ export class OverlayManager {
   }
 
   /**
-   * Constructs the Figma-style top and left measurement rulers.
+   * Creates an agent cursor element with crisp SVG icon (no text badges).
    */
-  private createRulers(): HTMLElement {
-    const rulers = document.createElement('div');
-    rulers.className = 'swarm-rulers-wrapper';
-
-    // Corner box
-    const corner = document.createElement('div');
-    corner.className = 'swarm-ruler-corner';
-    rulers.appendChild(corner);
-
-    // Top horizontal ruler
-    const topRuler = document.createElement('div');
-    topRuler.className = 'swarm-ruler-top';
-    topRuler.innerHTML = this.generateTopRulerTicks();
-
-    const topSegments = document.createElement('div');
-    topSegments.className = 'swarm-ruler-segments-top';
-    topRuler.appendChild(topSegments);
-    rulers.appendChild(topRuler);
-
-    // Left vertical ruler
-    const leftRuler = document.createElement('div');
-    leftRuler.className = 'swarm-ruler-left';
-    leftRuler.innerHTML = this.generateLeftRulerTicks();
-
-    const leftSegments = document.createElement('div');
-    leftSegments.className = 'swarm-ruler-segments-left';
-    leftRuler.appendChild(leftSegments);
-    rulers.appendChild(leftRuler);
-
-    this.topRulerSegmentsEl = topSegments;
-    this.leftRulerSegmentsEl = leftSegments;
-
-    return rulers;
-  }
-
-  /**
-   * Generates tick marks and coordinate numbers for top ruler.
-   */
-  private generateTopRulerTicks(): string {
-    let html = '';
-    for (let x = -100; x <= 2500; x += 100) {
-      html += `<div class="swarm-ruler-tick-num" style="left: ${x + 100}px;">${x}</div>`;
-      for (let sub = 10; sub < 100; sub += 10) {
-        const height = sub === 50 ? 7 : 4;
-        html += `<div class="swarm-ruler-tick" style="left: ${x + 100 + sub}px; height: ${height}px;"></div>`;
-      }
-    }
-    return html;
-  }
-
-  /**
-   * Generates tick marks and coordinate numbers for left ruler.
-   */
-  private generateLeftRulerTicks(): string {
-    let html = '';
-    for (let y = 0; y <= 3500; y += 100) {
-      html += `<div class="swarm-ruler-tick-num-v" style="top: ${y}px;">${y}</div>`;
-      for (let sub = 10; sub < 100; sub += 10) {
-        const width = sub === 50 ? 7 : 4;
-        html += `<div class="swarm-ruler-tick-v" style="top: ${y + sub}px; width: ${width}px;"></div>`;
-      }
-    }
-    return html;
-  }
-
-  /**
-   * Shows or hides the Figma rulers.
-   */
-  public setRulersVisible(visible: boolean): void {
-    if (this.rulersContainer) {
-      if (visible) {
-        this.rulersContainer.classList.add('visible');
-      } else {
-        this.rulersContainer.classList.remove('visible');
-      }
-    }
-  }
-
-  /**
-   * Slides rulers smoothly between hidden (0) and fully visible (1).
-   */
-  public setRulersProgress(progress: number): void {
-    if (!this.rulersContainer) return;
-    const top = this.rulersContainer.querySelector<HTMLElement>('.swarm-ruler-top');
-    const left = this.rulersContainer.querySelector<HTMLElement>('.swarm-ruler-left');
-    const corner = this.rulersContainer.querySelector<HTMLElement>('.swarm-ruler-corner');
-
-    if (top) top.style.transform = `translateY(${(progress - 1) * 100}%)`;
-    if (left) left.style.transform = `translateX(${(progress - 1) * 100}%)`;
-    if (corner) corner.style.opacity = progress.toFixed(3);
-  }
-
-  /**
-   * Updates the highlighted blue coordinate segments on the top and left rulers.
-   */
-  public updateRulerSegments(segments: ActiveRulerSegment[]): void {
-    if (!this.topRulerSegmentsEl || !this.leftRulerSegmentsEl) return;
-
-    let topHtml = '';
-    let leftHtml = '';
-
-    segments.forEach((s) => {
-      const leftVal = Math.round(s.left);
-      const topVal = Math.round(s.top);
-
-      topHtml += `<div class="swarm-ruler-segment-top" style="left: ${s.left}px; width: ${s.width}px;">${leftVal}</div>`;
-      leftHtml += `<div class="swarm-ruler-segment-left" style="top: ${s.top}px; height: ${s.height}px;">${topVal}</div>`;
-    });
-
-    this.topRulerSegmentsEl.innerHTML = topHtml;
-    this.leftRulerSegmentsEl.innerHTML = leftHtml;
-  }
-
-  /**
-   * Creates an agent cursor element with SVG icon (and optional label badge).
-   */
-  public createAgentElement(id: number, color: string, label?: string, showLabel = false): {
+  public createAgentElement(id: number, color: string): {
     element: HTMLElement;
     iconContainer: HTMLElement;
-    labelEl: HTMLElement | null;
   } {
     if (!this.agentsLayer) {
       throw new Error('[dom-swarm] OverlayManager is not mounted.');
@@ -262,253 +92,413 @@ export class OverlayManager {
     // Inner icon container
     const iconContainer = document.createElement('div');
     iconContainer.className = 'swarm-agent-icon';
-    iconContainer.innerHTML = this.getCursorSvg('arrow', color);
+    iconContainer.innerHTML = this.getPointerSvg(color);
 
     agentEl.appendChild(iconContainer);
-
-    let labelEl: HTMLElement | null = null;
-    if (showLabel && label) {
-      labelEl = document.createElement('div');
-      labelEl.className = 'swarm-agent-label';
-      labelEl.style.backgroundColor = color;
-      labelEl.textContent = label;
-      agentEl.appendChild(labelEl);
-    }
-
     this.agentsLayer.appendChild(agentEl);
 
-    return { element: agentEl, iconContainer, labelEl };
+    return { element: agentEl, iconContainer };
   }
 
   /**
-   * Updates hardware-accelerated transform of an agent cursor with exact hot-spot pivot,
-   * heading rotation, and click press compression.
+   * Updates hardware-accelerated transform of an agent cursor.
    */
   public updateAgentTransform(
     el: HTMLElement,
     x: number,
     y: number,
     angleDeg: number,
-    scale = 1,
-    shape: CursorShape = 'arrow',
-    press = 0
+    scale = 1
   ): void {
-    const [hotspotX, hotspotY] = OP_HOTSPOTS[shape] || [5, 3.5];
-    const pressScale = 1 - Math.min(Math.max(press, 0), 1) * 0.12;
-    const finalScale = scale * pressScale;
-
-    el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
-
-    const svg = el.querySelector<SVGSVGElement>('svg');
-    if (svg) {
-      svg.style.transform = `translate(${-hotspotX}px, ${-hotspotY}px) rotate(${angleDeg.toFixed(1)}deg) scale(${finalScale.toFixed(3)})`;
-      svg.style.transformOrigin = `${hotspotX}px ${hotspotY}px`;
-    }
+    el.style.transform = `translate3d(${x}px, ${y}px, 0) rotate(${angleDeg}deg) scale(${scale})`;
   }
 
   /**
-   * Sets cursor shape using Figma SVG definitions.
+   * Morphs/switches an agent icon to match the contextual tool category
+   * (e.g. pen for text, frame for containers, media for images, button for clicks, duplicate for clones).
    */
-  public setCursorShape(iconContainer: HTMLElement, shape: CursorShape, color: string): void {
-    iconContainer.innerHTML = this.getCursorSvg(shape, color);
-    if (shape === 'ibeam') {
-      iconContainer.classList.add('is-ibeam');
-    } else {
-      iconContainer.classList.remove('is-ibeam');
-    }
-  }
-
-  /**
-   * Compatibility alias for setAgentType.
-   */
-  public setAgentType(iconContainer: HTMLElement, type: AgentType, color: string): void {
-    const shape: CursorShape = type === 'ibeam' ? 'ibeam' : type === 'crosshair' ? 'cross' : 'arrow';
-    this.setCursorShape(iconContainer, shape, color);
-  }
-
   public setAgentIcon(iconContainer: HTMLElement, type: AgentType, color: string): void {
-    this.setAgentType(iconContainer, type, color);
-  }
+    iconContainer.className = 'swarm-agent-icon';
 
-  /**
-   * Generates exact Figma SVG for all cursor tools.
-   */
-  public getCursorSvg(shape: CursorShape, color: string): string {
-    const common = 'stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"';
-    let content = '';
-
-    switch (shape) {
-      case 'arrow':
-        content = `<path d="${PI_ARROW}" fill="${color}" ${common}/>`;
-        break;
-      case 'dup':
-        content = `
-          <path d="${PI_ARROW}" transform="translate(4 3.5)" fill="#ffffff" stroke="${color}" stroke-width="1.3" stroke-linejoin="round"/>
-          <path d="${PI_ARROW}" fill="${color}" ${common}/>
-        `;
-        break;
+    switch (type) {
       case 'pen':
-      case 'pen-add':
-      case 'pen-close': {
-        let badge = '';
-        if (shape === 'pen-add') {
-          badge = `
-            <g stroke-linecap="round">
-              <path d="M23 19.5 V26.5 M19.5 23 H26.5" stroke="#ffffff" stroke-width="3.4"/>
-              <path d="M23 19.5 V26.5 M19.5 23 H26.5" stroke="#1E1E1E" stroke-width="1.3"/>
-            </g>
-          `;
-        } else if (shape === 'pen-close') {
-          badge = `
-            <circle cx="23" cy="23" r="2.8" fill="none" stroke="#ffffff" stroke-width="3.2"/>
-            <circle cx="23" cy="23" r="2.8" fill="none" stroke="#1E1E1E" stroke-width="1.2"/>
-          `;
-        }
-        content = `
-          <path d="M17.4 10.6 L20.6 13.8 L13.8 20.6 L10.6 17.4 Z" fill="${color}" ${common}/>
-          <path d="M3 3 L13.1 6.3 L17.4 10.6 L10.6 17.4 L6.3 13.1 Z" fill="${color}" ${common}/>
-          <path d="M3.6 3.6 L8.9 8.9" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round"/>
-          <circle cx="10.2" cy="10.2" r="1.75" fill="none" stroke="#ffffff" stroke-width="1.2"/>
-          ${badge}
-        `;
+        iconContainer.innerHTML = this.getPenSvg(color);
+        iconContainer.classList.add('is-pen');
         break;
-      }
-      case 'cross':
-        content = `
-          <g stroke-linecap="round">
-            <path d="M12 3.5 V20.5 M3.5 12 H20.5" stroke="#ffffff" stroke-width="3.6"/>
-            <path d="M12 3.5 V20.5 M3.5 12 H20.5" stroke="${color}" stroke-width="1.5"/>
-          </g>
-        `;
+      case 'frame':
+        iconContainer.innerHTML = this.getFrameSvg(color);
+        iconContainer.classList.add('is-frame');
         break;
-      case 'ibeam': {
-        const d =
-          'M8.5 4.5 H10.5 Q12 4.5 12 6 Q12 4.5 13.5 4.5 H15.5 M12 6 V18 M8.5 19.5 H10.5 Q12 19.5 12 18 Q12 19.5 13.5 19.5 H15.5';
-        content = `
-          <g fill="none" stroke-linecap="round">
-            <path d="${d}" stroke="#ffffff" stroke-width="3.6"/>
-            <path d="${d}" stroke="${color}" stroke-width="1.5"/>
-          </g>
-        `;
+      case 'media':
+        iconContainer.innerHTML = this.getMediaSvg(color);
+        iconContainer.classList.add('is-media');
         break;
-      }
-      case 'ew':
-      case 'ns':
-        content = `<path d="M2.5 12 L7 7.5 V10.4 H17 V7.5 L21.5 12 L17 16.5 V13.6 H7 V16.5 Z" ${
-          shape === 'ns' ? 'transform="rotate(90 12 12)"' : ''
-        } fill="${color}" ${common}/>`;
+      case 'button':
+        iconContainer.innerHTML = this.getButtonSvg(color);
+        iconContainer.classList.add('is-button');
+        break;
+      case 'code':
+        iconContainer.innerHTML = this.getCodeSvg(color);
+        iconContainer.classList.add('is-code');
+        break;
+      case 'ibeam':
+        iconContainer.innerHTML = this.getIBeamSvg(color);
+        iconContainer.classList.add('is-ibeam');
+        break;
+      case 'hand':
+      case 'duplicate':
+        iconContainer.innerHTML = this.getHandSvg(color);
+        iconContainer.classList.add('is-hand');
+        break;
+      case 'pointer':
+      default:
+        iconContainer.innerHTML = this.getPointerSvg(color);
         break;
     }
-
-    return `<svg width="28" height="28" viewBox="0 0 28 28" fill="none" class="swarm-cursor-svg" style="overflow: visible; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,0.28));">${content}</svg>`;
   }
 
   /**
-   * Renders dynamic overlays (selection boxes, handles, badges, guidelines, ruler lines, measurement lines).
+   * Creates an animated selection bounding box overlay drawn by the swarm.
    */
-  public renderDynamicOverlays(items: OverlayItem[], rulerT = 0): void {
-    if (!this.svgLayer || !this.badgesLayer) return;
+  public createBoundingBox(
+    id: string,
+    rect: DOMRect,
+    type: BoundingBoxType,
+    showDimensions = true,
+    showGuides = true,
+    initialGeometry?: { left: number; top: number; width: number; height: number; opacity?: number }
+  ): HTMLElement {
+    if (!this.overlaysLayer) {
+      throw new Error('[dom-swarm] OverlayManager is not mounted.');
+    }
 
-    let svgHtml = '';
-    let badgesHtml = '';
+    const box = document.createElement('div');
+    box.className = `swarm-bounding-box box-${type}`;
+    box.id = `swarm-box-${id}`;
 
-    for (const item of items) {
-      if (item.t === 'box') {
-        const strokeColor = item.color === 'red' ? '#F24822' : '#0D99FF';
-        const b = item.b;
+    const geo = initialGeometry || {
+      left: rect.left,
+      top: rect.top,
+      width: Math.max(4, rect.width),
+      height: Math.max(4, rect.height),
+      opacity: 1,
+    };
 
-        // Bounding Box
-        svgHtml += `<rect x="${b.left}" y="${b.top}" width="${b.width}" height="${b.height}" fill="none" stroke="${strokeColor}" stroke-width="1.5"/>`;
+    box.style.transform = `translate3d(${geo.left}px, ${geo.top}px, 0)`;
+    box.style.width = `${Math.max(0, geo.width)}px`;
+    box.style.height = `${Math.max(0, geo.height)}px`;
+    box.style.opacity = (geo.opacity ?? 1).toString();
 
-        // Underline
-        if (item.underline && item.underline.width > 0) {
-          const u = item.underline;
-          svgHtml += `<line x1="${u.left}" x2="${u.left + u.width}" y1="${u.top}" y2="${u.top}" stroke="${strokeColor}" stroke-width="1.5"/>`;
-        }
+    if (type === 'blue') {
+      const corners = ['tl', 'tr', 'bl', 'br'];
+      corners.forEach((c) => {
+        const handle = document.createElement('div');
+        handle.className = `swarm-corner-handle handle-${c}`;
+        box.appendChild(handle);
+      });
 
-        // Projection lines to top/left rulers
-        if (item.rulerLines && rulerT > 0.05) {
-          svgHtml += `
-            <g stroke="${strokeColor}" stroke-width="1" stroke-dasharray="2 2" opacity="${rulerT}">
-              <line x1="20" x2="${b.left}" y1="${b.top + b.height / 2}" y2="${b.top + b.height / 2}"/>
-              <line x1="${b.left + b.width / 2}" x2="${b.left + b.width / 2}" y1="20" y2="${b.top}"/>
-            </g>
-          `;
-        }
+      if (showDimensions) {
+        const badge = document.createElement('div');
+        badge.className = 'swarm-dimension-badge';
+        badge.textContent = `${Math.round(geo.width)} × ${Math.round(geo.height)}`;
+        box.appendChild(badge);
+      }
+    } else {
+      if (showGuides && this.guidesLayer) {
+        this.createAlignmentGuides(id, rect);
+      }
 
-        // 4 white corner handles (7px × 7px)
-        if (item.handles && b.width > 12 && b.height > 12) {
-          const corners = [
-            [b.left, b.top],
-            [b.left + b.width, b.top],
-            [b.left, b.top + b.height],
-            [b.left + b.width, b.top + b.height],
-          ];
-          for (const corner of corners) {
-            if (!corner) continue;
-            const [cx, cy] = corner;
-            if (cx !== undefined && cy !== undefined) {
-              svgHtml += `<rect x="${cx - 3.5}" y="${cy - 3.5}" width="7" height="7" fill="#ffffff" stroke="${strokeColor}" stroke-width="1"/>`;
-            }
-          }
-        }
-
-        // Dimension badge
-        if (item.badge && b.width > 0) {
-          badgesHtml += `
-            <div class="swarm-dimension-badge" style="left: ${b.left + b.width / 2}px; top: ${
-            b.top + b.height + 8
-          }px; background: ${strokeColor};">
-              ${item.badge}
-            </div>
-          `;
-        }
-      } else if (item.t === 'measure') {
-        const { a, b, label } = item;
-        svgHtml += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#F24822" stroke-width="1.2"/>`;
-        const midX = (a.x + b.x) / 2;
-        const midY = (a.y + b.y) / 2;
-        badgesHtml += `
-          <div class="swarm-dimension-badge" style="left: ${midX}px; top: ${midY - 9}px; background: #F24822;">
-            ${label}
-          </div>
-        `;
-      } else if (item.t === 'guide') {
-        const strokeW = 1 + (item.flash || 0);
-        const filter = item.flash ? `drop-shadow(0 0 ${2 + item.flash * 3}px #F24822)` : '';
-        const op = item.opacity !== undefined ? item.opacity : 1;
-
-        if (item.axis === 'x') {
-          svgHtml += `<line x1="${item.pos}" x2="${item.pos}" y1="0" y2="10000" stroke="#F24822" stroke-width="${strokeW}" opacity="${op}" style="filter: ${filter};"/>`;
-        } else {
-          svgHtml += `<line x1="0" x2="10000" y1="${item.pos}" y2="${item.pos}" stroke="#F24822" stroke-width="${strokeW}" opacity="${op}" style="filter: ${filter};"/>`;
-        }
-      } else if (item.t === 'path') {
-        const pts = item.points;
-        if (pts.length > 0) {
-          const allPts = item.cursorPos ? [...pts, item.cursorPos] : pts;
-          const p0 = pts[0];
-          const closedStr = item.closed && p0 ? ` ${p0.x},${p0.y}` : '';
-          const pointsStr = allPts.map((p) => `${p.x},${p.y}`).join(' ') + closedStr;
-          svgHtml += `<polyline points="${pointsStr}" fill="none" stroke="#0D99FF" stroke-width="1.5"/>`;
-
-          for (const p of pts) {
-            svgHtml += `<circle cx="${p.x}" cy="${p.y}" r="3.6" fill="#ffffff" stroke="#0D99FF" stroke-width="1.5"/>`;
-          }
-        }
+      if (showDimensions) {
+        const badge = document.createElement('div');
+        badge.className = 'swarm-distance-badge';
+        const distVal = Math.round(Math.min(rect.left, rect.top));
+        badge.textContent = `${distVal}px`;
+        box.appendChild(badge);
       }
     }
 
-    this.svgLayer.innerHTML = svgHtml;
-    this.badgesLayer.innerHTML = badgesHtml;
+    this.overlaysLayer.appendChild(box);
+    return box;
   }
 
   /**
-   * Clears dynamic SVG and HTML badge layers.
+   * Creates a ghost wireframe clone for Figma-style copy/paste duplicate animations.
    */
-  public clearDynamicOverlays(): void {
-    if (this.svgLayer) this.svgLayer.innerHTML = '';
-    if (this.badgesLayer) this.badgesLayer.innerHTML = '';
+  public createGhostClone(id: string, rect: DOMRect): HTMLElement {
+    if (!this.overlaysLayer) {
+      throw new Error('[dom-swarm] OverlayManager is not mounted.');
+    }
+
+    const clone = document.createElement('div');
+    clone.className = 'swarm-ghost-clone';
+    clone.id = `swarm-clone-${id}`;
+    clone.style.transform = `translate3d(${rect.left}px, ${rect.top}px, 0)`;
+    clone.style.width = `${Math.max(4, rect.width)}px`;
+    clone.style.height = `${Math.max(4, rect.height)}px`;
+
+    const badge = document.createElement('div');
+    badge.className = 'swarm-clone-badge';
+    badge.textContent = 'Duplicate ⌥Drag';
+    clone.appendChild(badge);
+
+    const corners = ['tl', 'tr', 'bl', 'br'];
+    corners.forEach((c) => {
+      const handle = document.createElement('div');
+      handle.className = `swarm-corner-handle handle-${c}`;
+      clone.appendChild(handle);
+    });
+
+    this.overlaysLayer.appendChild(clone);
+    return clone;
+  }
+
+  /**
+   * Updates coordinates of the ghost clone as it glides from source to destination.
+   */
+  public updateGhostClone(
+    cloneEl: HTMLElement,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    opacity = 1
+  ): void {
+    cloneEl.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    cloneEl.style.width = `${Math.max(4, width)}px`;
+    cloneEl.style.height = `${Math.max(4, height)}px`;
+    cloneEl.style.opacity = opacity.toString();
+  }
+
+  /**
+   * Removes a ghost clone element.
+   */
+  public removeGhostClone(cloneEl: HTMLElement): void {
+    if (cloneEl.parentNode) {
+      cloneEl.parentNode.removeChild(cloneEl);
+    }
+  }
+
+  /**
+   * Smoothly updates bounding box geometry as the swarm cursors drag/expand it.
+   */
+  public updateBoxGeometry(
+    boxEl: HTMLElement,
+    rect: { left: number; top: number; width: number; height: number },
+    opacity = 1,
+    id?: string
+  ): void {
+    boxEl.style.transform = `translate3d(${rect.left}px, ${rect.top}px, 0)`;
+    boxEl.style.width = `${Math.max(0, rect.width)}px`;
+    boxEl.style.height = `${Math.max(0, rect.height)}px`;
+    boxEl.style.opacity = opacity.toString();
+
+    const dimBadge = boxEl.querySelector('.swarm-dimension-badge');
+    if (dimBadge) {
+      dimBadge.textContent = `${Math.round(rect.width)} × ${Math.round(rect.height)}`;
+    }
+
+    if (id && this.guidesLayer) {
+      const guidesGroup = this.shadowRoot?.getElementById(`swarm-guides-${id}`);
+      if (guidesGroup) {
+        const guidesH = guidesGroup.querySelectorAll<HTMLElement>('.swarm-guide-h');
+        if (guidesH[0]) guidesH[0].style.top = `${rect.top}px`;
+        if (guidesH[1]) guidesH[1].style.top = `${rect.top + rect.height}px`;
+
+        const guidesV = guidesGroup.querySelectorAll<HTMLElement>('.swarm-guide-v');
+        if (guidesV[0]) guidesV[0].style.left = `${rect.left}px`;
+        if (guidesV[1]) guidesV[1].style.left = `${rect.left + rect.width}px`;
+      }
+    }
+  }
+
+  /**
+   * Creates full-screen red alignment guide lines.
+   */
+  private createAlignmentGuides(id: string, rect: DOMRect): void {
+    if (!this.guidesLayer) return;
+
+    const guidesContainer = document.createElement('div');
+    guidesContainer.className = 'swarm-guides-group';
+    guidesContainer.id = `swarm-guides-${id}`;
+
+    // Horizontal top guide
+    const hTop = document.createElement('div');
+    hTop.className = 'swarm-guide swarm-guide-h';
+    hTop.style.top = `${rect.top}px`;
+
+    // Horizontal bottom guide
+    const hBottom = document.createElement('div');
+    hBottom.className = 'swarm-guide swarm-guide-h';
+    hBottom.style.top = `${rect.bottom}px`;
+
+    // Vertical left guide
+    const vLeft = document.createElement('div');
+    vLeft.className = 'swarm-guide swarm-guide-v';
+    vLeft.style.left = `${rect.left}px`;
+
+    // Vertical right guide
+    const vRight = document.createElement('div');
+    vRight.className = 'swarm-guide swarm-guide-v';
+    vRight.style.left = `${rect.right}px`;
+
+    guidesContainer.appendChild(hTop);
+    guidesContainer.appendChild(hBottom);
+    guidesContainer.appendChild(vLeft);
+    guidesContainer.appendChild(vRight);
+
+    this.guidesLayer.appendChild(guidesContainer);
+  }
+
+  /**
+   * Updates coordinates of an existing bounding box and its alignment guides during scrolling/resizing.
+   */
+  public updateBoundingBox(boxEl: HTMLElement, rect: DOMRect, id?: string): void {
+    boxEl.style.transform = `translate3d(${rect.left}px, ${rect.top}px, 0)`;
+    boxEl.style.width = `${Math.max(4, rect.width)}px`;
+    boxEl.style.height = `${Math.max(4, rect.height)}px`;
+
+    const dimBadge = boxEl.querySelector('.swarm-dimension-badge');
+    if (dimBadge) {
+      dimBadge.textContent = `${Math.round(rect.width)} × ${Math.round(rect.height)}`;
+    }
+
+    if (id && this.guidesLayer) {
+      const guidesGroup = this.shadowRoot?.getElementById(`swarm-guides-${id}`);
+      if (guidesGroup) {
+        const guidesH = guidesGroup.querySelectorAll<HTMLElement>('.swarm-guide-h');
+        if (guidesH[0]) guidesH[0].style.top = `${rect.top}px`;
+        if (guidesH[1]) guidesH[1].style.top = `${rect.bottom}px`;
+
+        const guidesV = guidesGroup.querySelectorAll<HTMLElement>('.swarm-guide-v');
+        if (guidesV[0]) guidesV[0].style.left = `${rect.left}px`;
+        if (guidesV[1]) guidesV[1].style.left = `${rect.right}px`;
+      }
+    }
+  }
+
+  /**
+   * Removes a bounding box overlay and any attached guide lines.
+   */
+  public removeBoundingBox(boxEl: HTMLElement, id?: string): void {
+    if (boxEl.parentNode) {
+      boxEl.parentNode.removeChild(boxEl);
+    }
+    if (id && this.shadowRoot) {
+      const guides = this.shadowRoot.getElementById(`swarm-guides-${id}`);
+      if (guides && guides.parentNode) {
+        guides.parentNode.removeChild(guides);
+      }
+    }
+  }
+
+  /**
+   * Standard Pointer SVG icon string.
+   */
+  private getPointerSvg(color: string): string {
+    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M3 2L10 21L13.5 13.5L21 10L3 2Z" fill="${color}" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/>
+    </svg>`;
+  }
+
+  /**
+   * Pencil / Pen tool SVG for text drafting and editing.
+   * Sharp tip aligned at (2, 2) matching cursor transform-origin.
+   */
+  private getPenSvg(color: string): string {
+    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2 2L3.5 9L9 3.5L2 2Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="1.2" stroke-linejoin="round"/>
+      <path d="M3.5 9L9 3.5L17.5 12L12 17.5L3.5 9Z" fill="${color}" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M12 17.5L17.5 12L20 14.5C21 15.5 21 17 20 18L18 20C17 21 15.5 21 14.5 20L12 17.5Z" fill="${color}" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M6.5 6.5L15 15" stroke="#FFFFFF" stroke-width="1.2" stroke-linecap="round"/>
+      <circle cx="2" cy="2" r="1.2" fill="#111827"/>
+    </svg>`;
+  }
+
+  /**
+   * Figma Frame / Container tool SVG with "#" layout badge.
+   */
+  private getFrameSvg(color: string): string {
+    return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2 2L8.5 19L11.5 12.5L18 9.5L2 2Z" fill="${color}" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M14 12V21M18 12V21M11 15H21M11 18.5H21" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round"/>
+      <path d="M14 12V21M18 12V21M11 15H21M11 18.5H21" stroke="${color}" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>`;
+  }
+
+  /**
+   * Media / Image tool SVG with landscape photo placement badge.
+   */
+  private getMediaSvg(color: string): string {
+    return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2 2L8.5 19L11.5 12.5L18 9.5L2 2Z" fill="${color}" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/>
+      <rect x="12" y="12" width="10" height="9" rx="1.5" fill="#0F172A" stroke="#FFFFFF" stroke-width="1.5"/>
+      <circle cx="15" cy="15" r="1.2" fill="#FBBF24"/>
+      <path d="M13 19L16 15.5L18 17.5L20 15L21 16.5V19H13Z" fill="${color}"/>
+    </svg>`;
+  }
+
+  /**
+   * Button / Interactive tool SVG with rounded button pill badge.
+   */
+  private getButtonSvg(color: string): string {
+    return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2 2L8.5 19L11.5 12.5L18 9.5L2 2Z" fill="${color}" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/>
+      <rect x="11.5" y="12.5" width="10.5" height="7.5" rx="3.75" fill="${color}" stroke="#FFFFFF" stroke-width="1.5"/>
+      <path d="M15 14.5L18.5 16.25L15 18V14.5Z" fill="#FFFFFF"/>
+    </svg>`;
+  }
+
+  /**
+   * Code / Terminal tool SVG with code brackets badge.
+   */
+  private getCodeSvg(color: string): string {
+    return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2 2L8.5 19L11.5 12.5L18 9.5L2 2Z" fill="${color}" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/>
+      <rect x="11" y="12" width="12" height="9" rx="2" fill="#0F172A" stroke="#FFFFFF" stroke-width="1.5"/>
+      <path d="M14 15L12.5 16.5L14 18M18 15L19.5 16.5L18 18" stroke="#38BDF8" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+  }
+
+  /**
+   * I-Beam text insertion SVG icon string.
+   */
+  private getIBeamSvg(color: string): string {
+    return `<svg width="20" height="24" viewBox="0 0 20 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 3H16M10 3V21M4 21H16" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/>
+      <path d="M4 3H16M10 3V21M4 21H16" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
+    </svg>`;
+  }
+
+  /**
+   * Hand dragging tool SVG for copy-pasting elements.
+   * Classic Figma / OS open dragging hand anchored at top fingertip.
+   */
+  private getHandSvg(color: string): string {
+    return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 3V11M8 11L6 9C5.2 8.2 3.8 8.2 3 9C2.2 9.8 2.2 11.2 3 12L8 17C9.3 18.3 11.1 19 13 19H16C18.8 19 21 16.8 21 14V10C21 8.9 20.1 8 19 8C18.7 8 18.4 8.1 18.2 8.2C17.9 7.2 17 6.5 16 6.5C15.6 6.5 15.3 6.6 15 6.8C14.6 6 13.8 5.5 13 5.5C12.6 5.5 12.3 5.6 12 5.8V3C12 1.9 11.1 1 10 1C8.9 1 8 1.9 8 3V11" fill="${color}" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/>
+    </svg>`;
+  }
+
+  /**
+   * Spawns a glowing expanding ripple when a cursor converges and vanishes into the user pointer.
+   */
+  public createVanishRipple(x: number, y: number, color: string): void {
+    if (!this.overlaysLayer) return;
+
+    const ripple = document.createElement('div');
+    ripple.className = 'swarm-vanish-ripple';
+    ripple.style.left = `${x}px`;
+    ripple.style.top = `${y}px`;
+    ripple.style.border = `2px solid ${color}`;
+    ripple.style.boxShadow = `0 0 12px ${color}`;
+
+    this.overlaysLayer.appendChild(ripple);
+
+    setTimeout(() => {
+      if (ripple.parentNode) {
+        ripple.parentNode.removeChild(ripple);
+      }
+    }, 600);
   }
 
   /**
@@ -518,229 +508,201 @@ export class OverlayManager {
     return `
       :host {
         all: initial;
-        position: fixed;
-        inset: 0;
         pointer-events: none;
-        z-index: 2147483647;
       }
-
-      * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
-
       .swarm-root {
-        position: absolute;
+        position: fixed;
         inset: 0;
         width: 100vw;
         height: 100vh;
-        overflow: hidden;
         pointer-events: none;
+        overflow: hidden;
         user-select: none;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       }
-
-      /* Figma Rulers Container */
-      .swarm-rulers-wrapper {
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-        z-index: 40;
-      }
-
-      .swarm-ruler-corner {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 20px;
-        height: 20px;
-        background: #2c2c2c;
-        border-right: 1px solid #3a3a3a;
-        border-bottom: 1px solid #3a3a3a;
-        z-index: 42;
-        opacity: 0;
-        transition: opacity 0.25s ease;
-      }
-
-      .swarm-ruler-top {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 20px;
-        background: #2c2c2c;
-        border-bottom: 1px solid #3a3a3a;
-        z-index: 41;
-        overflow: hidden;
-        transform: translateY(-100%);
-        transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-      }
-
-      .swarm-ruler-left {
-        position: fixed;
-        top: 0;
-        left: 0;
-        bottom: 0;
-        width: 20px;
-        background: #2c2c2c;
-        border-right: 1px solid #3a3a3a;
-        z-index: 41;
-        overflow: hidden;
-        transform: translateX(-100%);
-        transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-      }
-
-      .swarm-rulers-wrapper.visible .swarm-ruler-top {
-        transform: translateY(0);
-      }
-      .swarm-rulers-wrapper.visible .swarm-ruler-left {
-        transform: translateX(0);
-      }
-      .swarm-rulers-wrapper.visible .swarm-ruler-corner {
-        opacity: 1;
-      }
-
-      .swarm-ruler-tick-num {
-        position: absolute;
-        bottom: 7px;
-        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        font-size: 9px;
-        font-weight: 500;
-        color: #8c8c8c;
-        transform: translateX(-50%);
-        letter-spacing: -0.2px;
-      }
-      .swarm-ruler-tick {
-        position: absolute;
-        bottom: 0;
-        width: 1px;
-        background: #5e5e5e;
-      }
-
-      .swarm-ruler-tick-num-v {
-        position: absolute;
-        right: 6px;
-        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        font-size: 8px;
-        font-weight: 500;
-        color: #8c8c8c;
-        transform: translateY(-50%) rotate(-90deg);
-        letter-spacing: -0.2px;
-      }
-      .swarm-ruler-tick-v {
-        position: absolute;
-        right: 0;
-        height: 1px;
-        background: #5e5e5e;
-      }
-
-      /* Active highlighted coordinate segments on rulers */
-      .swarm-ruler-segment-top {
-        position: absolute;
-        top: 0;
-        height: 20px;
-        background: rgba(13, 153, 255, 0.22);
-        color: #0d99ff;
-        font-family: Inter, -apple-system, system-ui, sans-serif;
-        font-weight: 600;
-        font-size: 9px;
-        display: flex;
-        align-items: center;
-        padding-left: 3px;
-        overflow: hidden;
-        white-space: nowrap;
-      }
-      .swarm-ruler-segment-left {
-        position: absolute;
-        left: 0;
-        width: 20px;
-        background: rgba(13, 153, 255, 0.22);
-        color: #0d99ff;
-        font-family: Inter, -apple-system, system-ui, sans-serif;
-        font-weight: 600;
-        font-size: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-        white-space: nowrap;
-        writing-mode: vertical-lr;
-      }
-
-      /* Layers */
+      .swarm-agents-layer,
+      .swarm-overlays-layer,
       .swarm-guides-layer {
         position: absolute;
         inset: 0;
-        z-index: 10;
         pointer-events: none;
       }
-      .swarm-overlays-layer {
-        position: absolute;
-        inset: 0;
-        z-index: 20;
-        pointer-events: none;
-      }
-      .swarm-badges-layer {
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-      }
-      .swarm-agents-layer {
-        position: absolute;
-        inset: 0;
-        z-index: 30;
-        pointer-events: none;
-      }
-
-      /* Cursors */
       .swarm-agent {
         position: absolute;
         top: 0;
         left: 0;
         pointer-events: none;
         will-change: transform;
-        transition: opacity 0.15s ease;
+        transform-origin: 3px 2px;
+        filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.28));
+        transition: opacity 0.2s ease;
       }
       .swarm-agent-icon {
         display: inline-block;
         pointer-events: none;
+        transform-origin: 0 0;
+        transition: transform 0.15s ease;
+      }
+      .swarm-agent-icon.is-pen {
+        animation: swarm-pen-draw 0.35s infinite alternate ease-in-out;
+      }
+      @keyframes swarm-pen-draw {
+        0% { transform: translate(0, 0); }
+        100% { transform: translate(1.5px, -1.5px); }
       }
       .swarm-agent-icon.is-ibeam {
-        animation: swarm-ibeam-pulse 0.6s infinite alternate ease-in-out;
+        animation: swarm-ibeam-pulse 0.7s infinite alternate ease-in-out;
       }
       @keyframes swarm-ibeam-pulse {
-        0% { opacity: 0.8; }
-        100% { opacity: 1; }
+        0% { opacity: 0.6; transform: scale(0.95); }
+        100% { opacity: 1; transform: scale(1.05); }
       }
-
-      .swarm-agent-label {
+      .swarm-agent-icon.is-button {
+        animation: swarm-button-press 0.45s infinite alternate ease-in-out;
+      }
+      @keyframes swarm-button-press {
+        0% { transform: scale(1); }
+        100% { transform: scale(0.92); }
+      }
+      .swarm-agent-icon.is-hand,
+      .swarm-agent-icon.is-duplicate {
+        animation: swarm-dup-float 0.45s infinite alternate ease-in-out;
+      }
+      @keyframes swarm-dup-float {
+        0% { transform: translateY(0); }
+        100% { transform: translateY(-1.5px); }
+      }
+      .swarm-bounding-box {
         position: absolute;
-        top: 16px;
-        left: 14px;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+        will-change: transform, width, height;
+        box-sizing: border-box;
+        border-radius: 2px;
+        transition: opacity 0.2s ease;
+      }
+      .box-blue {
+        border: 1.5px solid #0d99ff;
+        background: rgba(13, 153, 255, 0.08);
+        box-shadow: 0 0 0 1px rgba(13, 153, 255, 0.2);
+      }
+      .box-red {
+        border: 1.5px solid #f24822;
+        background: rgba(242, 72, 34, 0.07);
+        box-shadow: 0 0 0 1px rgba(242, 72, 34, 0.2);
+      }
+      .swarm-ghost-clone {
+        position: absolute;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+        will-change: transform;
+        box-sizing: border-box;
+        border: 1.5px dashed #0d99ff;
+        background: rgba(13, 153, 255, 0.12);
+        box-shadow: 0 4px 14px rgba(13, 153, 255, 0.22);
+        border-radius: 2px;
+      }
+      .swarm-clone-badge {
+        position: absolute;
+        top: -22px;
+        left: 0;
+        background: #0d99ff;
+        color: #ffffff;
+        font-size: 9px;
+        font-weight: 700;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
         padding: 2px 6px;
         border-radius: 4px;
+        white-space: nowrap;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+        letter-spacing: 0.3px;
+      }
+      .swarm-corner-handle {
+        position: absolute;
+        width: 6px;
+        height: 6px;
+        background: #ffffff;
+        border: 1.5px solid #0d99ff;
+        border-radius: 1px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+      }
+      .handle-tl { top: -4px; left: -4px; }
+      .handle-tr { top: -4px; right: -4px; }
+      .handle-bl { bottom: -4px; left: -4px; }
+      .handle-br { bottom: -4px; right: -4px; }
+
+      .swarm-dimension-badge {
+        position: absolute;
+        left: 50%;
+        bottom: -22px;
+        transform: translateX(-50%);
+        background: #0d99ff;
         color: #ffffff;
         font-size: 10px;
         font-weight: 600;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        padding: 2px 6px;
+        border-radius: 4px;
         white-space: nowrap;
-        pointer-events: none;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        letter-spacing: 0.2px;
       }
-
-      /* Dimension & Measurement Badges */
-      .swarm-dimension-badge {
+      .swarm-distance-badge {
         position: absolute;
-        transform: translateX(-50%);
+        top: -18px;
+        left: 4px;
+        background: #f24822;
         color: #ffffff;
-        font-family: Inter, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-        font-size: 11px;
-        line-height: 16px;
-        font-weight: 600;
-        font-variant-numeric: tabular-nums;
-        padding: 1px 4px;
-        border-radius: 2px;
+        font-size: 9px;
+        font-weight: 700;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        padding: 1px 5px;
+        border-radius: 3px;
         white-space: nowrap;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      }
+      .swarm-vanish-ripple {
+        position: absolute;
+        border-radius: 50%;
+        pointer-events: none;
+        transform: translate(-50%, -50%);
+        animation: swarm-ripple 0.55s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+      }
+      @keyframes swarm-ripple {
+        0% {
+          width: 6px;
+          height: 6px;
+          opacity: 0.9;
+          transform: translate(-50%, -50%) scale(0.6);
+        }
+        100% {
+          width: 70px;
+          height: 70px;
+          opacity: 0;
+          transform: translate(-50%, -50%) scale(1.4);
+        }
+      }
+      .swarm-guide {
+        position: absolute;
+        pointer-events: none;
+      }
+      .swarm-guide-h {
+        left: 0;
+        right: 0;
+        width: 100vw;
+        height: 1px;
+        background: rgba(242, 72, 34, 0.45);
+        border-top: 1px dashed rgba(242, 72, 34, 0.6);
+      }
+      .swarm-guide-v {
+        top: 0;
+        bottom: 0;
+        height: 100vh;
+        width: 1px;
+        background: rgba(242, 72, 34, 0.45);
+        border-left: 1px dashed rgba(242, 72, 34, 0.6);
       }
     `;
   }
@@ -753,12 +715,11 @@ export class OverlayManager {
       this.hostElement.parentNode.removeChild(this.hostElement);
     }
     this.hostElement = null;
+    this.shadowRoot = null;
     this.agentsLayer = null;
-    this.svgLayer = null;
-    this.badgesLayer = null;
-    this.rulersContainer = null;
-    this.topRulerSegmentsEl = null;
-    this.leftRulerSegmentsEl = null;
+    this.overlaysLayer = null;
+    this.guidesLayer = null;
     this.mounted = false;
   }
 }
+
