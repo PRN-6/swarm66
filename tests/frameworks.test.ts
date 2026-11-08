@@ -115,6 +115,19 @@ describe('Universal Framework & Web Language Compatibility', () => {
     const instance2 = new Swarm66({ agentCount: 8 });
     expect(instance2).toBeDefined();
     instance2.destroy();
+
+    // Supports calling as a function without 'new' (fixes "Class constructor cannot be invoked without 'new'")
+    const instance3 = DomSwarm({ agentCount: 10 });
+    expect(instance3).toBeDefined();
+    instance3.destroy();
+
+    const instance4 = Swarm66({ agentCount: 10 });
+    expect(instance4).toBeDefined();
+    instance4.destroy();
+
+    const instance5 = new DomSwarm({ agentCount: 10 });
+    expect(instance5).toBeDefined();
+    instance5.destroy();
   });
 
   it('provides safe execution across Node SSR environments (Next.js SSR / Nuxt SSR / PHP prerender)', () => {

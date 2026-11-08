@@ -1189,9 +1189,9 @@
 
     // Initialize Swarm66 live on the page
     function initLiveSwarm() {
-      const enable = typeof Swarm66 === 'function'
-        ? Swarm66
-        : (typeof window !== 'undefined' ? (window.enableSwarm || window.swarm66 || window.DomSwarm) : null);
+      const enable = (typeof window !== 'undefined' && (window.enableSwarm || window.swarm66))
+        || (typeof Swarm66 === 'function' ? Swarm66 : null)
+        || (typeof DomSwarm === 'function' ? DomSwarm : null);
 
       if (enable) {
         activeSwarm = enable({

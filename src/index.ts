@@ -2,22 +2,6 @@ import { SwarmConfig, DomSwarmInstance, ResolvedSwarmConfig, SwarmMetrics } from
 import { SwarmEngine } from './core/SwarmEngine';
 
 /**
- * Public class implementation of Swarm66 / DomSwarm.
- */
-export class Swarm66 extends SwarmEngine {
-  constructor(config?: SwarmConfig) {
-    super(config);
-  }
-}
-
-export class DomSwarm extends Swarm66 {}
-
-/**
- * Convenience alias for swarm66 initialization.
- */
-export const swarm66 = enableSwarm;
-
-/**
  * Convenience factory to mount and enable the DomSwarm visual engine on any page.
  * Safe for Server-Side Rendering (SSR) environments.
  *
@@ -26,7 +10,7 @@ export const swarm66 = enableSwarm;
  *
  * @example
  * ```ts
- * import { enableSwarm } from 'dom-swarm';
+ * import { enableSwarm } from '@leozodiac/swarm66';
  *
  * const swarm = enableSwarm({
  *   agentCount: 20,
@@ -95,8 +79,55 @@ export function enableSwarm(config?: SwarmConfig): DomSwarmInstance {
     };
   }
 
-  return new DomSwarm(config);
+  return new SwarmEngine(config);
 }
+
+/**
+ * Interface supporting both `new Swarm66(config)` and `Swarm66(config)` without `new`.
+ */
+export interface SwarmConstructor {
+  new (config?: SwarmConfig): DomSwarmInstance;
+  (config?: SwarmConfig): DomSwarmInstance;
+  enableSwarm: typeof enableSwarm;
+  swarm66: typeof enableSwarm;
+  default: typeof enableSwarm;
+  Swarm66?: SwarmConstructor;
+  DomSwarm?: SwarmConstructor;
+}
+
+function createSwarmConstructor(): SwarmConstructor {
+  function SwarmCallable(this: any, config?: SwarmConfig): DomSwarmInstance {
+    return enableSwarm(config);
+  }
+  Object.setPrototypeOf(SwarmCallable, SwarmEngine);
+  SwarmCallable.prototype = SwarmEngine.prototype;
+  (SwarmCallable as any).enableSwarm = enableSwarm;
+  (SwarmCallable as any).swarm66 = enableSwarm;
+  (SwarmCallable as any).default = enableSwarm;
+  return SwarmCallable as unknown as SwarmConstructor;
+}
+
+/**
+ * Public class and callable factory for Swarm66.
+ * Can be instantiated with `new Swarm66(config)` or called directly as `Swarm66(config)`.
+ */
+export const Swarm66: SwarmConstructor = createSwarmConstructor();
+
+/**
+ * Backward compatibility alias for DomSwarm.
+ * Can be instantiated with `new DomSwarm(config)` or called directly as `DomSwarm(config)`.
+ */
+export const DomSwarm: SwarmConstructor = createSwarmConstructor();
+
+(Swarm66 as any).Swarm66 = Swarm66;
+(Swarm66 as any).DomSwarm = DomSwarm;
+(DomSwarm as any).Swarm66 = Swarm66;
+(DomSwarm as any).DomSwarm = DomSwarm;
+
+/**
+ * Convenience alias for swarm66 initialization.
+ */
+export const swarm66 = enableSwarm;
 
 // Auto-bind to window global for vanilla HTML, PHP, Laravel, WordPress, and Django templates
 if (typeof window !== 'undefined') {
