@@ -230,6 +230,9 @@ export class DomScanner {
       'canvas',
       'video',
       'pre',
+      'code',
+      'kbd',
+      'samp',
       'blockquote',
       'label',
       'input',
@@ -261,10 +264,10 @@ export class DomScanner {
     ];
     if (visualClassKeywords.some((kw) => className.includes(kw))) return true;
 
-    // 3. Spans: Eligible if they have direct text content
+    // 3. Spans: Eligible if they have direct text content or inline badges
     if (tagName === 'span') {
       const text = el.textContent?.trim() || '';
-      return text.length > 0 && text.length < 500 && el.childElementCount <= 1;
+      return text.length > 0 && text.length < 500 && el.childElementCount <= 3;
     }
 
     // 4. Divs / Containers: Eligible if they have direct text or visible border/background styling

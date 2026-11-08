@@ -105,12 +105,17 @@ export class BuilderEffects {
       'blockquote',
       'li',
       'label',
+      'a',
     ];
     if (!textTags.includes(tagName)) return false;
 
-    // Only typewrite if it is a pure leaf element with direct text (no nested tags like SVG icons)
+    // Do not treat major structural wrappers as simple text
+    if (element.querySelector('div, section, article, table, header, nav, footer, main')) {
+      return false;
+    }
+
     const text = element.textContent?.trim() || '';
-    return text.length > 0 && text.length < 500 && element.childElementCount === 0;
+    return text.length > 0;
   }
 
   /**
@@ -190,24 +195,9 @@ export class BuilderEffects {
     element.style.removeProperty('transition');
     element.style.removeProperty('pointer-events');
 
-    // Un-hide all child elements inside this container so content is immediately visible inside the card/box
-    const hiddenChildren = element.querySelectorAll<HTMLElement>('*');
-    for (let i = 0; i < hiddenChildren.length; i++) {
-      const child = hiddenChildren[i];
-      if (child && this.modifiedElements.has(child)) {
-        child.style.removeProperty('opacity');
-        child.style.removeProperty('transform');
-        child.style.removeProperty('transition');
-        child.style.removeProperty('pointer-events');
-        child.style.removeProperty('clip-path');
-        this.modifiedElements.delete(child);
-        this.activeRestorations.delete(child);
-      }
-    }
-
     const safeTypewriter = isText && enableTypewriter && BuilderEffects.isTextElement(element);
 
-    if (safeTypewriter && element.childElementCount === 0) {
+    if (safeTypewriter) {
       // Non-destructive Progressive Reveal:
       // Uses hardware-accelerated clip-path to unveil text left-to-right without mutating textContent.
       // 100% immune to React Fiber removeChild errors and hydration conflicts.
@@ -217,8 +207,8 @@ export class BuilderEffects {
 
       const originalText = element.textContent || '';
       const textLen = Math.max(originalText.length, 1);
-      const steps = Math.min(textLen, 40);
-      const stepDelay = Math.max(12, Math.floor((durationMs * 0.75) / steps));
+      const steps = Math.min(Math.max(Math.floor(textLen / 2), 12), 50);
+      const stepDelay = Math.max(10, Math.floor((durationMs * 0.8) / steps));
       let currentStep = 0;
 
       const stepReveal = () => {

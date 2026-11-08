@@ -491,21 +491,6 @@ export class SwarmEngine implements DomSwarmInstance {
         continue;
       }
 
-      // If an ancestor container has already been constructed, its content was already revealed with it!
-      let ancestorConstructed = false;
-      for (let i = 0; i < this.constructedTemplates.length; i++) {
-        const template = this.constructedTemplates[i];
-        if (template && template.element !== nextElement && template.element.contains(nextElement)) {
-          ancestorConstructed = true;
-          break;
-        }
-      }
-      if (ancestorConstructed) {
-        this.constructedElements.add(nextElement);
-        this.constructedCount++;
-        continue;
-      }
-
       this.constructElement(nextElement);
     }
 
@@ -565,7 +550,7 @@ export class SwarmEngine implements DomSwarmInstance {
     }
 
     const category = BuilderEffects.getElementCategory(element);
-    const isText = category === 'text' || BuilderEffects.isTextElement(element);
+    const isText = category === 'text' || category === 'code' || BuilderEffects.isTextElement(element);
     const boxType = this.activeBoxTypeToggle ? 'red' : 'blue';
     this.activeBoxTypeToggle = !this.activeBoxTypeToggle;
 
