@@ -190,6 +190,21 @@ export class BuilderEffects {
     element.style.removeProperty('transition');
     element.style.removeProperty('pointer-events');
 
+    // Un-hide all child elements inside this container so content is immediately visible inside the card/box
+    const hiddenChildren = element.querySelectorAll<HTMLElement>('*');
+    for (let i = 0; i < hiddenChildren.length; i++) {
+      const child = hiddenChildren[i];
+      if (child && this.modifiedElements.has(child)) {
+        child.style.removeProperty('opacity');
+        child.style.removeProperty('transform');
+        child.style.removeProperty('transition');
+        child.style.removeProperty('pointer-events');
+        child.style.removeProperty('clip-path');
+        this.modifiedElements.delete(child);
+        this.activeRestorations.delete(child);
+      }
+    }
+
     const safeTypewriter = isText && enableTypewriter && BuilderEffects.isTextElement(element);
 
     if (safeTypewriter && element.childElementCount === 0) {

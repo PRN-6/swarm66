@@ -8,6 +8,7 @@ export interface DomScannerOptions {
   buildOrder: BuildOrder;
   builderEffects: BuilderEffects;
   onElementDiscovered?: (element: HTMLElement) => void;
+  isElementConstructed?: (element: HTMLElement) => boolean;
 }
 
 /**
@@ -140,6 +141,8 @@ export class DomScanner {
    */
   public hideCandidateTree(root: HTMLElement): void {
     if (this.shouldIgnoreElement(root)) return;
+    if (this.options.isElementConstructed?.(root)) return;
+
     const rect = root.getBoundingClientRect();
     if (this.isEligibleElement(root, rect)) {
       this.options.builderEffects.hideElement(root);
@@ -149,7 +152,7 @@ export class DomScanner {
     );
     for (let i = 0; i < children.length; i++) {
       const child = children[i];
-      if (child && !this.shouldIgnoreElement(child)) {
+      if (child && !this.shouldIgnoreElement(child) && !this.options.isElementConstructed?.(child)) {
         this.options.builderEffects.hideElement(child);
       }
     }

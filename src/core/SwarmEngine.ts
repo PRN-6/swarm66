@@ -80,6 +80,7 @@ export class SwarmEngine implements DomSwarmInstance {
 
   // History of recently constructed element templates for Figma-style copy/paste duplicate animations
   private constructedTemplates: Array<{ element: HTMLElement; rect: DOMRect }> = [];
+  private constructedElements = new WeakSet<HTMLElement>();
 
   // Multi-page & client-side SPA route tracking
   private lastUrl = typeof window !== 'undefined' ? window.location.href : '';
@@ -106,6 +107,7 @@ export class SwarmEngine implements DomSwarmInstance {
       buildOrder: this.config.buildOrder,
       builderEffects: this.builderEffects,
       onElementDiscovered: (el) => this.enqueueElement(el),
+      isElementConstructed: (el) => this.constructedElements.has(el),
     });
 
     this.init();
@@ -477,9 +479,34 @@ export class SwarmEngine implements DomSwarmInstance {
     // Dispatch next elements up to concurrency limit
     while (this.tasks.size < this.config.concurrency && this.buildQueue.length > 0) {
       const nextElement = this.buildQueue.shift();
-      if (nextElement) {
-        this.constructElement(nextElement);
+      if (!nextElement) continue;
+
+      // Skip elements that are detached from the active document body
+      if (typeof document !== 'undefined' && !document.body.contains(nextElement)) {
+        continue;
       }
+
+      // Skip elements that are already constructed
+      if (this.constructedElements.has(nextElement)) {
+        continue;
+      }
+
+      // If an ancestor container has already been constructed, its content was already revealed with it!
+      let ancestorConstructed = false;
+      for (let i = 0; i < this.constructedTemplates.length; i++) {
+        const template = this.constructedTemplates[i];
+        if (template && template.element !== nextElement && template.element.contains(nextElement)) {
+          ancestorConstructed = true;
+          break;
+        }
+      }
+      if (ancestorConstructed) {
+        this.constructedElements.add(nextElement);
+        this.constructedCount++;
+        continue;
+      }
+
+      this.constructElement(nextElement);
     }
 
     if (this.buildQueue.length === 0 && this.tasks.size === 0 && !this.isFinishedState) {
@@ -690,6 +717,7 @@ export class SwarmEngine implements DomSwarmInstance {
       }
     });
 
+    this.constructedElements.add(task.element);
     this.tasks.delete(taskId);
     this.constructedCount++;
     this.config.onElementConstructed?.(task.element);
@@ -825,6 +853,7 @@ export class SwarmEngine implements DomSwarmInstance {
     });
     this.tasks.clear();
     this.constructedTemplates = [];
+    this.constructedElements = new WeakSet<HTMLElement>();
     this.buildQueue = [];
     this.constructedCount = 0;
 
