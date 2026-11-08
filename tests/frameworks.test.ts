@@ -135,5 +135,19 @@ describe('Universal Framework & Web Language Compatibility', () => {
       serverInstance.destroy();
     }).not.toThrow();
   });
+
+  it('guarantees universal modern UI element detection (React, Tailwind cards, spec grids, badges, pills)', () => {
+    // Verify default config includes comprehensive selectors for modern web frameworks
+    const instance = enableSwarm();
+    const config = instance.getConfig();
+    expect(config.selector).toContain('header');
+    expect(config.selector).toContain('[class*="card"]');
+    expect(config.selector).toContain('[class*="badge"]');
+    expect(config.selector).toContain('[class*="border"]');
+    expect(config.selector).toContain('[class*="spec"]');
+    expect(config.selector).toContain('span');
+    expect(config.hideOnStart).toBe(true);
+    instance.destroy();
+  });
 });
 

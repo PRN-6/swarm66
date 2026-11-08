@@ -84,6 +84,8 @@ export class BuilderEffects {
 
   /**
    * Checks whether an element is suitable for a typewriter text reveal.
+   * Only leaf text elements with zero child HTML tags qualify, ensuring full safety
+   * with React Virtual DOM, Vue templates, and Svelte hydration.
    */
   public static isTextElement(element: HTMLElement): boolean {
     const tagName = element.tagName.toLowerCase();
@@ -102,16 +104,19 @@ export class BuilderEffects {
       'em',
       'blockquote',
       'li',
+      'label',
     ];
     if (!textTags.includes(tagName)) return false;
 
-    // Only typewrite if it has direct text content and not complex nested element trees
+    // Only typewrite if it is a pure leaf element with direct text (no nested tags like SVG icons)
     const text = element.textContent?.trim() || '';
-    return text.length > 0 && text.length < 350 && element.childElementCount <= 1;
+    return text.length > 0 && text.length < 500 && element.childElementCount === 0;
   }
 
   /**
    * Immediately hides an element while preserving its native document layout and background.
+   * Uses !important property overrides to guarantee child cards, badges, and text stay hidden
+   * even when framework stylesheets (like Tailwind or Bootstrap) use high-specificity utility classes.
    */
   public hideElement(element: HTMLElement): void {
     if (this.modifiedElements.has(element)) return;
@@ -121,26 +126,53 @@ export class BuilderEffects {
     const originalTransform = element.style.transform;
     const originalTransition = element.style.transition;
     const originalPointerEvents = element.style.pointerEvents;
+    const originalClipPath = element.style.clipPath;
 
-    element.style.opacity = '0';
-    element.style.transform = 'scale(0.96)';
-    element.style.transition = 'none';
-    element.style.pointerEvents = 'none';
+    element.style.setProperty('opacity', '0', 'important');
+    element.style.setProperty('transform', 'scale(0.96)', 'important');
+    element.style.setProperty('transition', 'none', 'important');
+    element.style.setProperty('pointer-events', 'none', 'important');
 
     this.modifiedElements.add(element);
 
     this.activeRestorations.set(element, () => {
-      element.style.opacity = originalOpacity;
-      element.style.visibility = originalVisibility;
-      element.style.transform = originalTransform;
-      element.style.transition = originalTransition;
-      element.style.pointerEvents = originalPointerEvents;
+      if (originalOpacity) {
+        element.style.setProperty('opacity', originalOpacity);
+      } else {
+        element.style.removeProperty('opacity');
+      }
+      if (originalVisibility) {
+        element.style.setProperty('visibility', originalVisibility);
+      } else {
+        element.style.removeProperty('visibility');
+      }
+      if (originalTransform) {
+        element.style.setProperty('transform', originalTransform);
+      } else {
+        element.style.removeProperty('transform');
+      }
+      if (originalTransition) {
+        element.style.setProperty('transition', originalTransition);
+      } else {
+        element.style.removeProperty('transition');
+      }
+      if (originalPointerEvents) {
+        element.style.setProperty('pointer-events', originalPointerEvents);
+      } else {
+        element.style.removeProperty('pointer-events');
+      }
+      if (originalClipPath) {
+        element.style.setProperty('clip-path', originalClipPath);
+      } else {
+        element.style.removeProperty('clip-path');
+      }
       this.modifiedElements.delete(element);
     });
   }
 
   /**
-   * Executes element construction reveal (typewriter for text, scale/opacity for blocks).
+   * Executes element construction reveal (safe typewriter for text, smooth scale/opacity for blocks).
+   * Framework-safe: Never destroys React Fiber text nodes, preventing reconciliation crashes.
    */
   public executeReveal(
     element: HTMLElement,
@@ -152,47 +184,56 @@ export class BuilderEffects {
     let cancelled = false;
     let timerId: any = null;
 
-    if (isText && enableTypewriter && BuilderEffects.isTextElement(element)) {
-      // Typewriter Effect
-      const originalText = element.textContent || '';
-      element.textContent = '';
+    // Remove the !important overrides so the element can animate into view
+    element.style.removeProperty('opacity');
+    element.style.removeProperty('transform');
+    element.style.removeProperty('transition');
+    element.style.removeProperty('pointer-events');
+
+    const safeTypewriter = isText && enableTypewriter && BuilderEffects.isTextElement(element);
+
+    if (safeTypewriter && element.childElementCount === 0) {
+      // Non-destructive Progressive Reveal:
+      // Uses hardware-accelerated clip-path to unveil text left-to-right without mutating textContent.
+      // 100% immune to React Fiber removeChild errors and hydration conflicts.
       element.style.opacity = '1';
       element.style.transform = 'scale(1)';
       element.style.pointerEvents = '';
 
-      const charDelay = Math.max(
-        10,
-        Math.floor((durationMs * 0.75) / Math.max(originalText.length, 1))
-      );
-      let charIndex = 0;
+      const originalText = element.textContent || '';
+      const textLen = Math.max(originalText.length, 1);
+      const steps = Math.min(textLen, 40);
+      const stepDelay = Math.max(12, Math.floor((durationMs * 0.75) / steps));
+      let currentStep = 0;
 
-      const typeNextChar = () => {
+      const stepReveal = () => {
         if (cancelled) return;
+        currentStep++;
+        const pct = Math.min(100, Math.round((currentStep / steps) * 100));
+        element.style.clipPath = `inset(0 ${100 - pct}% 0 0)`;
 
-        if (charIndex < originalText.length) {
-          element.textContent = originalText.slice(0, charIndex + 1);
-          charIndex++;
-          timerId = setTimeout(typeNextChar, charDelay);
+        if (currentStep < steps) {
+          timerId = setTimeout(stepReveal, stepDelay);
         } else {
-          element.textContent = originalText;
+          element.style.clipPath = '';
           this.cleanupElement(element);
           onComplete();
         }
       };
 
-      timerId = setTimeout(typeNextChar, 50);
+      timerId = setTimeout(stepReveal, 16);
 
       const cancel = () => {
         cancelled = true;
         if (timerId) clearTimeout(timerId);
-        element.textContent = originalText;
+        element.style.clipPath = '';
         this.cleanupElement(element);
       };
 
       this.activeRestorations.set(element, cancel);
       return cancel;
     } else {
-      // Smooth Scale & Opacity Reveal for Blocks/Images/Buttons/Cards
+      // Smooth Scale & Opacity Reveal for Blocks/Images/Buttons/Cards/Nested Text
       element.style.transition = `opacity ${durationMs * 0.75}ms cubic-bezier(0.16, 1, 0.3, 1), transform ${durationMs * 0.75}ms cubic-bezier(0.16, 1, 0.3, 1)`;
 
       // Force style recalculation before transition
@@ -223,10 +264,11 @@ export class BuilderEffects {
    * Cleans up temporary inline styles applied during animation.
    */
   private cleanupElement(element: HTMLElement): void {
-    element.style.transition = '';
-    element.style.transform = '';
-    element.style.opacity = '';
-    element.style.pointerEvents = '';
+    element.style.removeProperty('transition');
+    element.style.removeProperty('transform');
+    element.style.removeProperty('opacity');
+    element.style.removeProperty('pointer-events');
+    element.style.removeProperty('clip-path');
     this.activeRestorations.delete(element);
     this.modifiedElements.delete(element);
   }

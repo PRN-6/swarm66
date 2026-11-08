@@ -20,7 +20,8 @@ const DEFAULT_CONFIG: ResolvedSwarmConfig = {
   teamSize: 4,
   copyPasteDuplicates: true,
   colors: ['#FF5722', '#00BCD4', '#8BC34A', '#9C27B0', '#FFC107', '#E91E63', '#2196F3'],
-  selector: 'nav, header, h1, h2, h3, h4, h5, h6, p, button, a, img, pre, code, .swarm-item, .price-card, .interactive-card, .metric-card',
+  selector:
+    'header, nav, main, section, article, aside, footer, h1, h2, h3, h4, h5, h6, p, span, a, button, input, textarea, select, label, img, svg, canvas, video, pre, code, blockquote, li, table, [class*="card"], [class*="badge"], [class*="box"], [class*="panel"], [class*="item"], [class*="border"], [class*="btn"], [class*="spec"], [class*="pill"], .swarm-item',
   ignoreSelector: '[data-no-swarm], script, style, noscript, dom-swarm-overlay, .swarm-hud',
   hideOnStart: true,
   concurrency: 4,
@@ -285,7 +286,7 @@ export class SwarmEngine implements DomSwarmInstance {
         task.rect = rect;
 
         if (task.phase === 'CLONING') {
-          const elapsed = timestamp - task.expandStartTime;
+          const elapsed = Math.max(0, timestamp - task.expandStartTime);
           const p = Math.min(elapsed / task.expandDuration, 1.0);
           const ease = 1 - Math.pow(1 - p, 3); // Smooth cubic ease-out
 
@@ -370,7 +371,7 @@ export class SwarmEngine implements DomSwarmInstance {
             task.cancelEffect = cancelReveal;
           }
         } else if (task.phase === 'EXPANDING') {
-          const elapsed = timestamp - task.expandStartTime;
+          const elapsed = Math.max(0, timestamp - task.expandStartTime);
           const p = Math.min(elapsed / task.expandDuration, 1.0);
           const ease = 1 - Math.pow(1 - p, 3); // Smooth cubic ease out
 
@@ -613,6 +614,13 @@ export class SwarmEngine implements DomSwarmInstance {
       completed: false,
     };
 
+    // Watchdog failsafe: guarantee task completion and resource release even if element is unmounted or animation stalls
+    task.watchdogTimer = setTimeout(() => {
+      if (this.tasks.has(taskId)) {
+        this.completeTask(taskId);
+      }
+    }, (task.duration || 550) + 1200);
+
     this.tasks.set(taskId, task);
 
     // Save template for future same-size element matching
@@ -657,6 +665,11 @@ export class SwarmEngine implements DomSwarmInstance {
     if (!task || task.completed) return;
 
     task.completed = true;
+
+    if (task.watchdogTimer) {
+      clearTimeout(task.watchdogTimer);
+      task.watchdogTimer = null;
+    }
 
     if (task.boxElement) {
       this.overlayManager.removeBoundingBox(task.boxElement, task.id);
@@ -786,6 +799,10 @@ export class SwarmEngine implements DomSwarmInstance {
 
     // 1. Cancel in-flight tasks and clear existing overlays
     this.tasks.forEach((task) => {
+      if (task.watchdogTimer) {
+        clearTimeout(task.watchdogTimer);
+        task.watchdogTimer = null;
+      }
       task.cancelEffect?.();
       if (task.boxElement) {
         this.overlayManager.removeBoundingBox(task.boxElement, task.id);
@@ -925,6 +942,10 @@ export class SwarmEngine implements DomSwarmInstance {
     if (this.destroyed) return;
 
     this.tasks.forEach((task) => {
+      if (task.watchdogTimer) {
+        clearTimeout(task.watchdogTimer);
+        task.watchdogTimer = null;
+      }
       task.cancelEffect?.();
       if (task.boxElement) {
         this.overlayManager.removeBoundingBox(task.boxElement, task.id);
@@ -1081,6 +1102,10 @@ export class SwarmEngine implements DomSwarmInstance {
     this.domScanner.destroy();
 
     this.tasks.forEach((task) => {
+      if (task.watchdogTimer) {
+        clearTimeout(task.watchdogTimer);
+        task.watchdogTimer = null;
+      }
       task.cancelEffect?.();
       if (task.boxElement) {
         this.overlayManager.removeBoundingBox(task.boxElement, task.id);

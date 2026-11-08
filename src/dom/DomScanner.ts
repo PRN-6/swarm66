@@ -44,19 +44,27 @@ export class DomScanner {
     if (typeof document === 'undefined') return [];
 
     try {
-      const candidates = Array.from(
+      // 1. Gather all elements matching configured selector
+      const primaryCandidates = Array.from(
         document.querySelectorAll<HTMLElement>(this.options.selector)
       );
 
+      // 2. Also query modern UI cards, badges, spec boxes, and leaf text containers
+      const componentCandidates = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          'div[class*="border"], div[class*="bg-"], div[class*="card"], div[class*="box"], div[class*="spec"], div[class*="item"], div[class*="panel"], span'
+        )
+      );
+
+      const combined = Array.from(new Set([...primaryCandidates, ...componentCandidates]));
       const validElements: HTMLElement[] = [];
 
-      for (let i = 0; i < candidates.length; i++) {
-        const el = candidates[i];
+      for (let i = 0; i < combined.length; i++) {
+        const el = combined[i];
         if (!el || this.shouldIgnoreElement(el)) continue;
 
         const rect = el.getBoundingClientRect();
-        // Ignore zero-size or invisible elements
-        if (rect.width < 8 || rect.height < 8) continue;
+        if (!this.isEligibleElement(el, rect)) continue;
 
         validElements.push(el);
       }
@@ -127,13 +135,35 @@ export class DomScanner {
   }
 
   /**
-   * Monitors dynamic component mounting for SPA client-side route changes.
+   * Immediately hides newly mounted elements in the DOM tree before browser paint.
+   * Guarantees true blank canvas on dynamic React/Vue page transitions and client navigation.
+   */
+  public hideCandidateTree(root: HTMLElement): void {
+    if (this.shouldIgnoreElement(root)) return;
+    const rect = root.getBoundingClientRect();
+    if (this.isEligibleElement(root, rect)) {
+      this.options.builderEffects.hideElement(root);
+    }
+    const children = root.querySelectorAll<HTMLElement>(
+      'header, nav, main, section, article, aside, footer, h1, h2, h3, h4, h5, h6, p, span, a, button, input, textarea, select, label, img, svg, canvas, video, pre, code, blockquote, li, table, [class*="card"], [class*="badge"], [class*="box"], [class*="border"], [class*="spec"]'
+    );
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      if (child && !this.shouldIgnoreElement(child)) {
+        this.options.builderEffects.hideElement(child);
+      }
+    }
+  }
+
+  /**
+   * Monitors dynamic component mounting for SPA client-side route changes (React, Vue, Next.js, Svelte).
    */
   private setupMutationObserver(): void {
     if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return;
 
     this.mutationObserver = new MutationObserver((mutations) => {
       let shouldRescan = false;
+
       for (let i = 0; i < mutations.length; i++) {
         const mutation = mutations[i];
         if (mutation && mutation.addedNodes.length > 0) {
@@ -141,21 +171,28 @@ export class DomScanner {
             const node = mutation.addedNodes[j];
             if (node instanceof HTMLElement && node.tagName.toLowerCase() !== 'dom-swarm-overlay') {
               shouldRescan = true;
-              break;
+              // Synchronously hide newly added DOM trees to prevent visual flicker before construction
+              if (this.options.hideOnStart) {
+                this.hideCandidateTree(node);
+              }
             }
           }
         }
-        if (shouldRescan) break;
       }
 
       if (shouldRescan) {
         if (this.mutationTimeout) clearTimeout(this.mutationTimeout);
+        // Fast 16ms single-frame debounce
         this.mutationTimeout = setTimeout(() => {
           const fresh = this.scanAndIndex();
           fresh.forEach((el) => {
+            if (!this.observedElements.has(el)) {
+              this.observedElements.add(el);
+              this.options.onElementDiscovered?.(el);
+            }
             this.intersectionObserver?.observe(el);
           });
-        }, 120);
+        }, 16);
       }
     });
 
@@ -166,14 +203,140 @@ export class DomScanner {
   }
 
   /**
+   * Checks whether an element contains meaningful content or visual styling
+   * worthy of autonomous agent construction.
+   */
+  private isEligibleElement(el: HTMLElement, rect: DOMRect): boolean {
+    if (rect.width < 6 || rect.height < 6) return false;
+
+    const tagName = el.tagName.toLowerCase();
+
+    // 1. Semantic headings, copy, media, form controls, and lists are always eligible
+    const alwaysEligible = [
+      'h1',
+      'h2',
+      'h3',
+      'h4',
+      'h5',
+      'h6',
+      'p',
+      'button',
+      'a',
+      'img',
+      'svg',
+      'canvas',
+      'video',
+      'pre',
+      'code',
+      'blockquote',
+      'label',
+      'input',
+      'textarea',
+      'select',
+      'li',
+      'table',
+      'th',
+      'td',
+    ];
+    if (alwaysEligible.includes(tagName)) return true;
+
+    // 2. Elements with explicit card, badge, spec, item, border, button, or swarm classes
+    const className = (typeof el.className === 'string' ? el.className : '').toLowerCase();
+    const visualClassKeywords = [
+      'card',
+      'badge',
+      'box',
+      'panel',
+      'item',
+      'border',
+      'btn',
+      'spec',
+      'pill',
+      'tile',
+      'stat',
+      'banner',
+      'tag',
+      'group',
+      'swarm',
+    ];
+    if (visualClassKeywords.some((kw) => className.includes(kw))) return true;
+
+    // 3. Spans: Eligible if they have direct text content
+    if (tagName === 'span') {
+      const text = el.textContent?.trim() || '';
+      return text.length > 0 && text.length < 500;
+    }
+
+    // 4. Divs / Containers: Eligible if they have direct text or visible border/background styling
+    if (
+      tagName === 'div' ||
+      tagName === 'section' ||
+      tagName === 'article' ||
+      tagName === 'header' ||
+      tagName === 'nav' ||
+      tagName === 'footer' ||
+      tagName === 'aside'
+    ) {
+      // Direct text node
+      const hasDirectText = Array.from(el.childNodes).some(
+        (node) => node.nodeType === Node.TEXT_NODE && (node.textContent?.trim() || '').length > 0
+      );
+      if (hasDirectText) return true;
+
+      // Leaf or near-leaf container with text
+      if (el.childElementCount <= 2 && (el.textContent?.trim() || '').length > 0) return true;
+
+      // Visual container with border or non-transparent background
+      if (typeof window !== 'undefined') {
+        const style = window.getComputedStyle(el);
+        const hasBorder =
+          style.borderWidth !== '0px' && style.borderStyle !== 'none' && style.borderStyle !== '';
+        const hasBg =
+          style.backgroundColor !== 'transparent' &&
+          style.backgroundColor !== 'rgba(0, 0, 0, 0)' &&
+          style.backgroundColor !== '';
+        const hasShadow = style.boxShadow !== 'none' && style.boxShadow !== '';
+        if (hasBorder || hasBg || hasShadow) return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Evaluates if element matches ignore selectors or is structurally hidden.
+   * Protects whole-page viewport background wrappers so the native page theme is never lost.
    */
   private shouldIgnoreElement(el: HTMLElement): boolean {
+    if (!el || !(el instanceof HTMLElement)) return true;
     if (el.closest('dom-swarm-overlay') || el.closest('.swarm-hud')) return true;
     if (this.options.ignoreSelector && el.matches(this.options.ignoreSelector)) return true;
 
-    const style = window.getComputedStyle(el);
-    if (style.display === 'none' || style.visibility === 'hidden') return true;
+    const tagName = el.tagName.toLowerCase();
+    // Ignore non-visual technical tags and application mount roots
+    if (
+      ['html', 'body', 'script', 'style', 'noscript', 'link', 'meta', 'template', 'head'].includes(
+        tagName
+      )
+    ) {
+      return true;
+    }
+    if (el.id === 'root' || el.id === '__next' || el.hasAttribute('data-reactroot')) return true;
+
+    // Ignore elements with zero dimension or hidden display
+    if (typeof window !== 'undefined') {
+      const style = window.getComputedStyle(el);
+      if (style.display === 'none' || style.visibility === 'hidden') return true;
+
+      // Protect full-viewport background wrappers (e.g. <div class="min-h-screen bg-black">)
+      // so the native background of the website is NEVER lost!
+      const winW = window.innerWidth || 1024;
+      const winH = window.innerHeight || 768;
+      const rect = el.getBoundingClientRect();
+      if (rect.width >= winW * 0.96 && rect.height >= winH * 0.96 && el.childElementCount >= 2) {
+        return true;
+      }
+    }
 
     return false;
   }

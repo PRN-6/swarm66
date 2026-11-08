@@ -65,7 +65,8 @@ export interface SwarmConfig {
 
   /**
    * CSS selector matching DOM elements to reverse-engineer and construct.
-   * @default 'nav, header, h1, h2, h3, h4, h5, h6, p, button, a, img, pre, code, .swarm-item, .price-card, .interactive-card, .metric-card'
+   * Covers semantic tags, structural sections, cards, badges, spec boxes, and leaf text containers.
+   * @default 'header, nav, main, section, article, aside, footer, h1, h2, h3, h4, h5, h6, p, span, a, button, input, textarea, select, label, img, svg, canvas, video, pre, code, blockquote, li, table, [class*="card"], [class*="badge"], [class*="box"], [class*="panel"], [class*="item"], [class*="border"], [class*="btn"], [class*="spec"], [class*="pill"], .swarm-item'
    */
   selector?: string;
 
@@ -255,6 +256,7 @@ export interface ConstructionTask {
   cloneElement?: HTMLElement;
   completed: boolean;
   cancelEffect?: () => void;
+  watchdogTimer?: any;
 }
 
 export interface SwarmMetrics {
