@@ -1,0 +1,24 @@
+# Media & Assets
+assets/
+*.webm
+*.mp4
+*.mov
+*.gif
+
+# Demos & Scratch
+demo/
+demo1/
+demo2/
+demo3/
+demo4/
+scratch/
+scripts/
+
+# Development & Testing
+tests/
+coverage/
+src/
+tsup.config.ts
+tsconfig.json
+vitest.config.ts
+.github/

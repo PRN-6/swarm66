@@ -9,6 +9,18 @@
 
 ---
 
+## 🎬 Live Demo
+
+https://github.com/PRN-6/swarm66/raw/main/assets/swarm66-demo.webm
+
+<p align="center">
+  <video src="https://github.com/PRN-6/swarm66/raw/main/assets/swarm66-demo.webm" width="100%" autoplay loop muted playsinline controls>
+    <a href="https://github.com/PRN-6/swarm66/raw/main/assets/swarm66-demo.webm">Watch Demo Video</a>
+  </video>
+</p>
+
+---
+
 ## ✨ How It Works
 
 1. **Initial Blank Canvas:**
@@ -22,8 +34,8 @@
    - Snapping **Figma Blue Selection Bounding Boxes** (`#0d99ff`) with live pixel dimension badges (`380 × 48`) and corner resize handles.
    - Drawing **Red Alignment Wireframes** (`#f24822`) with full-screen horizontal and vertical guide lines.
    - Active cursor-drawn box expansion: agents actively pull the 4 corners outward from `0 × 0` before revealing content.
-3. **Grand Finale — Convergence & Vanishing:**
-   As soon as the entire page is constructed, the swarm accelerates and swirls directly into the user's live mouse cursor, shrinking and vanishing into thin air—leaving the user with a 100% interactive, pristine webpage!
+3. **Grand Finale — 360° Orbit Convergence & Cursor Merger:**
+   As soon as all elements are constructed, all 18 cursors smoothly fly to the user's cursor, form a synchronized collar, execute a full **360° circular swirl orbit** around the user's live cursor, and collapse directly into the main pointer with neon vanish ripples—leaving the user with a 100% interactive, pristine webpage!
 
 ---
 
