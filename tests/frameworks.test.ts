@@ -149,5 +149,15 @@ describe('Universal Framework & Web Language Compatibility', () => {
     expect(config.hideOnStart).toBe(true);
     instance.destroy();
   });
+
+  it('handles SPA client-side route changes and prevents agent lockup during transitions', () => {
+    const instance = enableSwarm({ rebuildOnRouteChange: true });
+    expect(() => {
+      // Simulate multi-page route navigation
+      instance.handlePageNavigation();
+      instance.handlePageNavigation();
+    }).not.toThrow();
+    instance.destroy();
+  });
 });
 

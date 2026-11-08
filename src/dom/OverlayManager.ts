@@ -20,6 +20,10 @@ export class OverlayManager {
   public mount(): boolean {
     if (this.mounted || typeof document === 'undefined') return false;
 
+    // Clean up any stale overlays from previous instances
+    const staleOverlays = document.querySelectorAll('dom-swarm-overlay');
+    staleOverlays.forEach((el) => el.parentNode?.removeChild(el));
+
     // Create root host element
     const host = document.createElement('dom-swarm-overlay');
     host.setAttribute('aria-hidden', 'true');

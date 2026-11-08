@@ -70,6 +70,7 @@ export class SwarmEngine implements DomSwarmInstance {
   private destroyed = false;
   private isFinishedState = false;
   private isConverging = false;
+  private convergenceTimer: any = null;
 
   // Performance telemetry
   private frameCount = 0;
@@ -700,6 +701,9 @@ export class SwarmEngine implements DomSwarmInstance {
    * Triggers the grand finale: all 18 cursors accelerate towards the user's cursor, swirl, and vanish.
    */
   private triggerConvergenceFinale(): void {
+    if (this.convergenceTimer) {
+      clearTimeout(this.convergenceTimer);
+    }
     this.isConverging = true;
 
     const targetPos = this.mousePos || vec(
@@ -712,7 +716,7 @@ export class SwarmEngine implements DomSwarmInstance {
       this.config.onAgentStateChange?.(agent.id, 'CONVERGING_TO_USER');
     });
 
-    setTimeout(() => {
+    this.convergenceTimer = setTimeout(() => {
       if (this.isConverging) {
         this.agents.forEach((agent) => {
           agent.state = 'VANISHED';
@@ -720,6 +724,7 @@ export class SwarmEngine implements DomSwarmInstance {
         });
         this.isFinishedState = true;
         this.isConverging = false;
+        this.convergenceTimer = null;
         this.config.onSwarmVanished?.();
       }
     }, 2500);
@@ -797,6 +802,13 @@ export class SwarmEngine implements DomSwarmInstance {
   public handlePageNavigation(): void {
     if (this.destroyed) return;
 
+    if (this.convergenceTimer) {
+      clearTimeout(this.convergenceTimer);
+      this.convergenceTimer = null;
+    }
+    this.isFinishedState = false;
+    this.isConverging = false;
+
     // 1. Cancel in-flight tasks and clear existing overlays
     this.tasks.forEach((task) => {
       if (task.watchdogTimer) {
@@ -815,36 +827,36 @@ export class SwarmEngine implements DomSwarmInstance {
     this.constructedTemplates = [];
     this.buildQueue = [];
     this.constructedCount = 0;
-    this.isFinishedState = false;
-    this.isConverging = false;
 
-    // 2. Allow a brief tick for SPA frameworks (Next.js / React / Vue) to mount the new route components
+    // 2. Respawn and reposition all 18 agents immediately
+    const width = window.innerWidth || 1024;
+    const height = window.innerHeight || 768;
+
+    this.agents.forEach((agent) => {
+      const pos = vec(
+        randomRange(width * 0.1, width * 0.9),
+        randomRange(height * 0.1, height * 0.9)
+      );
+      agent.reset(pos, this.overlayManager);
+    });
+
+    // 3. Scan and hide new page elements immediately
+    const elements = this.domScanner.scanAndIndex();
+    this.buildQueue = [...elements];
+    this.processBuildQueue();
+
+    // 4. In SPA frameworks with exit animations (e.g. Framer Motion <AnimatePresence mode="wait">),
+    // the incoming route component mounts after ~200ms. A second sweep guarantees 100% detection.
     setTimeout(() => {
       if (this.destroyed) return;
-
-      // 3. Scan and hide new page elements
-      const elements = this.domScanner.scanAndIndex();
-      this.buildQueue = [...elements];
-
-      // 4. Respawn and reposition all 18 agents from the screen edges
-      const width = window.innerWidth || 1024;
-      const height = window.innerHeight || 768;
-
-      this.agents.forEach((agent) => {
-        const pos = vec(
-          randomRange(width * 0.1, width * 0.9),
-          randomRange(height * 0.1, height * 0.9)
-        );
-        agent.reset(pos, this.overlayManager);
-      });
-
-      // 5. Begin processing build queue for the new page
-      setTimeout(() => {
-        if (!this.destroyed) {
-          this.processBuildQueue();
+      const fresh = this.domScanner.scanAndIndex();
+      fresh.forEach((el) => {
+        if (!this.buildQueue.includes(el)) {
+          this.buildQueue.push(el);
         }
-      }, 150);
-    }, 80);
+      });
+      this.processBuildQueue();
+    }, 220);
   }
 
   /**
@@ -854,15 +866,19 @@ export class SwarmEngine implements DomSwarmInstance {
     if (!this.buildQueue.includes(element)) {
       this.buildQueue.push(element);
 
-      // If swarm has finished/vanished, wake up agents to build the newly added element!
-      if (this.isFinishedState) {
+      // If swarm has finished or was in convergence, wake up all agents immediately!
+      if (this.isFinishedState || this.isConverging) {
+        if (this.convergenceTimer) {
+          clearTimeout(this.convergenceTimer);
+          this.convergenceTimer = null;
+        }
         this.isFinishedState = false;
         this.isConverging = false;
         const width = window.innerWidth || 1024;
         const height = window.innerHeight || 768;
 
         this.agents.forEach((agent) => {
-          if (agent.state === 'VANISHED') {
+          if (agent.state === 'VANISHED' || agent.state === 'CONVERGING_TO_USER') {
             const pos = vec(
               randomRange(width * 0.1, width * 0.9),
               randomRange(height * 0.1, height * 0.9)
@@ -1097,6 +1113,11 @@ export class SwarmEngine implements DomSwarmInstance {
     if (this.routeChangeDebounce) {
       clearTimeout(this.routeChangeDebounce);
       this.routeChangeDebounce = null;
+    }
+
+    if (this.convergenceTimer) {
+      clearTimeout(this.convergenceTimer);
+      this.convergenceTimer = null;
     }
 
     this.domScanner.destroy();

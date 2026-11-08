@@ -207,7 +207,7 @@ export class DomScanner {
    * worthy of autonomous agent construction.
    */
   private isEligibleElement(el: HTMLElement, rect: DOMRect): boolean {
-    if (rect.width < 6 || rect.height < 6) return false;
+    if (rect.width < 8 || rect.height < 8) return false;
 
     const tagName = el.tagName.toLowerCase();
 
@@ -227,7 +227,6 @@ export class DomScanner {
       'canvas',
       'video',
       'pre',
-      'code',
       'blockquote',
       'label',
       'input',
@@ -235,8 +234,6 @@ export class DomScanner {
       'select',
       'li',
       'table',
-      'th',
-      'td',
     ];
     if (alwaysEligible.includes(tagName)) return true;
 
@@ -256,15 +253,15 @@ export class DomScanner {
       'stat',
       'banner',
       'tag',
-      'group',
       'swarm',
+      'aspect-square',
     ];
     if (visualClassKeywords.some((kw) => className.includes(kw))) return true;
 
     // 3. Spans: Eligible if they have direct text content
     if (tagName === 'span') {
       const text = el.textContent?.trim() || '';
-      return text.length > 0 && text.length < 500;
+      return text.length > 0 && text.length < 500 && el.childElementCount <= 1;
     }
 
     // 4. Divs / Containers: Eligible if they have direct text or visible border/background styling
@@ -281,10 +278,7 @@ export class DomScanner {
       const hasDirectText = Array.from(el.childNodes).some(
         (node) => node.nodeType === Node.TEXT_NODE && (node.textContent?.trim() || '').length > 0
       );
-      if (hasDirectText) return true;
-
-      // Leaf or near-leaf container with text
-      if (el.childElementCount <= 2 && (el.textContent?.trim() || '').length > 0) return true;
+      if (hasDirectText && el.childElementCount <= 2) return true;
 
       // Visual container with border or non-transparent background
       if (typeof window !== 'undefined') {
@@ -296,7 +290,9 @@ export class DomScanner {
           style.backgroundColor !== 'rgba(0, 0, 0, 0)' &&
           style.backgroundColor !== '';
         const hasShadow = style.boxShadow !== 'none' && style.boxShadow !== '';
-        if (hasBorder || hasBg || hasShadow) return true;
+        if ((hasBorder || hasBg || hasShadow) && rect.width >= 40 && rect.height >= 24) {
+          return true;
+        }
       }
     }
 
@@ -305,7 +301,8 @@ export class DomScanner {
 
   /**
    * Evaluates if element matches ignore selectors or is structurally hidden.
-   * Protects whole-page viewport background wrappers so the native page theme is never lost.
+   * Protects whole-page viewport background wrappers so the native page theme is never lost,
+   * and prevents decomposition of composite interactive widgets (chessboards, canvas, SVGs, code blocks).
    */
   private shouldIgnoreElement(el: HTMLElement): boolean {
     if (!el || !(el instanceof HTMLElement)) return true;
@@ -322,6 +319,29 @@ export class DomScanner {
       return true;
     }
     if (el.id === 'root' || el.id === '__next' || el.hasAttribute('data-reactroot')) return true;
+
+    // Never decompose internal SVG elements (paths, rects, circles, defs, g)
+    if (el.closest('svg') && tagName !== 'svg') return true;
+
+    // Never decompose Canvas or Video internals
+    if (el.closest('canvas') && tagName !== 'canvas') return true;
+
+    // Never decompose complex interactive widgets (Chessboards, Maps, Calendars, Iframes)
+    if (
+      el.closest(
+        '[data-square], [data-chessboard], [class*="chessboard"], [class*="leaflet"], [class*="mapbox"], iframe'
+      ) &&
+      !el.matches('[data-chessboard], [class*="chessboard"], [class*="aspect-square"]')
+    ) {
+      return true;
+    }
+
+    // Never decompose syntax-highlighted code block internals (tokens inside pre/code)
+    if (el.closest('pre') && el !== el.closest('pre')) return true;
+
+    // Never decompose atomic interactive controls (buttons and links)
+    if (el.closest('button') && el !== el.closest('button')) return true;
+    if (el.closest('a') && el !== el.closest('a')) return true;
 
     // Ignore elements with zero dimension or hidden display
     if (typeof window !== 'undefined') {
