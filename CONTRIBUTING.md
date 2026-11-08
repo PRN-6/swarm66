@@ -140,3 +140,4 @@ If you find a bug or have a suggestion:
 ## 📜 License
 
 By contributing to `@leozodiac/swarm66`, you agree that your contributions will be licensed under the project's [MIT License](LICENSE).
+

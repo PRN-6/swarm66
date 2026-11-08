@@ -64,6 +64,9 @@ export class DomScanner {
         const el = combined[i];
         if (!el || this.shouldIgnoreElement(el)) continue;
 
+        // Skip elements that are already constructed by Swarm
+        if (this.options.isElementConstructed?.(el)) continue;
+
         const rect = el.getBoundingClientRect();
         if (!this.isEligibleElement(el, rect)) continue;
 
@@ -90,7 +93,8 @@ export class DomScanner {
         validElements.sort(() => Math.random() - 0.5);
       }
 
-      // Apply initial blank state (hide elements while preserving native page background)
+      // Apply initial blank state ONLY to unconstructed elements:
+      // Existing constructed elements are never re-hidden!
       if (this.options.hideOnStart) {
         validElements.forEach((el) => {
           this.options.builderEffects.hideElement(el);
@@ -174,10 +178,6 @@ export class DomScanner {
             const node = mutation.addedNodes[j];
             if (node instanceof HTMLElement && node.tagName.toLowerCase() !== 'dom-swarm-overlay') {
               shouldRescan = true;
-              // Synchronously hide newly added DOM trees to prevent visual flicker before construction
-              if (this.options.hideOnStart) {
-                this.hideCandidateTree(node);
-              }
             }
           }
         }

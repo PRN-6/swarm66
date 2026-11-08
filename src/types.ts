@@ -246,6 +246,10 @@ export interface ConstructionTask {
   isCopyPaste: boolean;
   sourceRect?: DOMRect;
   startTime: number;
+  moveStartTime?: number;
+  moveDuration?: number;
+  startPos?: Vector2D;
+  targetPos?: Vector2D;
   expandStartTime: number;
   expandDuration: number;
   duration: number;

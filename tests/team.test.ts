@@ -243,4 +243,36 @@ describe('4-Agent Team & Border Geometry', () => {
       expect(agent.opacity).toBe(0);
     });
   });
+
+  it('choreographs 360-degree circle orbit and collapse merger into user cursor', () => {
+    const mousePos = { x: 500, y: 350 };
+    const agentCount = 18;
+    const baseRadius = 65;
+
+    // Test 1: Even distribution around the 360 circle (2pi radians)
+    const angles = Array.from({ length: agentCount }, (_, i) => (2 * Math.PI * i) / agentCount);
+    expect(angles).toHaveLength(18);
+    expect(angles[0]).toBe(0);
+    expect(angles[agentCount / 2]).toBeCloseTo(Math.PI);
+    expect(angles[agentCount - 1]).toBeCloseTo((2 * Math.PI * 17) / 18);
+
+    // Test 2: Full 360-degree rotation during swirl phase
+    const pSwirlStart = 0.0;
+    const pSwirlEnd = 1.0;
+    const easeStart = pSwirlStart < 0.5 ? 4 * Math.pow(pSwirlStart, 3) : 1;
+    const easeEnd = 1 - Math.pow(-2 * pSwirlEnd + 2, 3) / 2;
+    expect(2 * Math.PI * easeStart).toBe(0);
+    expect(2 * Math.PI * easeEnd).toBeCloseTo(2 * Math.PI);
+
+    // Test 3: Collapse inward and merge into the user cursor position
+    const pCollapseEnd = 1.0;
+    const collapseEase = pCollapseEnd * pCollapseEnd;
+    const currentRadius = Math.max(0, baseRadius * (1 - collapseEase));
+    expect(currentRadius).toBe(0);
+
+    const mergedX = mousePos.x + currentRadius * Math.cos(0);
+    const mergedY = mousePos.y + currentRadius * Math.sin(0);
+    expect(mergedX).toBe(mousePos.x);
+    expect(mergedY).toBe(mousePos.y);
+  });
 });

@@ -6,6 +6,7 @@ import {
   ResolvedSwarmConfig,
   SwarmConfig,
   SwarmMetrics,
+  TaskPhase,
   Vector2D,
 } from '../types';
 import { Agent } from './Agent';
@@ -13,7 +14,7 @@ import { BoidsPhysics } from './BoidsPhysics';
 import { OverlayManager } from '../dom/OverlayManager';
 import { BuilderEffects } from '../dom/BuilderEffects';
 import { DomScanner } from '../dom/DomScanner';
-import { vec, dist, randomRange, sub, normalize, mult } from '../utils/math';
+import { vec, dist, randomRange } from '../utils/math';
 
 const DEFAULT_CONFIG: ResolvedSwarmConfig = {
   agentCount: 18,
@@ -70,6 +71,7 @@ export class SwarmEngine implements DomSwarmInstance {
   private destroyed = false;
   private isFinishedState = false;
   private isConverging = false;
+  private convergenceStartTime = 0;
   private convergenceTimer: any = null;
 
   // Performance telemetry
@@ -244,6 +246,10 @@ export class SwarmEngine implements DomSwarmInstance {
         if (remainingAgents.length === 0) {
           this.isFinishedState = true;
           this.isConverging = false;
+          if (this.convergenceTimer) {
+            clearTimeout(this.convergenceTimer);
+            this.convergenceTimer = null;
+          }
           this.config.onSwarmVanished?.();
         }
       }
@@ -254,12 +260,62 @@ export class SwarmEngine implements DomSwarmInstance {
         if (!agent || agent.state === 'VANISHED' || agent.assignedTaskId) continue;
 
         if (agent.state === 'CONVERGING_TO_USER') {
-          const seekForce = BoidsPhysics.seek(agent, activeMouse, 50);
-          agent.applyForce(seekForce);
+          const elapsed = Math.max(0, timestamp - (this.convergenceStartTime || timestamp));
+          const D1 = 450;  // Phase 1: Fly from work position to circle orbit ring (450ms)
+          const D2 = 1200; // Phase 2: Full 360-degree circular orbit swirl around user cursor (1200ms)
+          const D3 = 450;  // Phase 3: Inward collapse and join into main user cursor (450ms)
+          const baseRadius = 65;
 
-          const toMouse = sub(activeMouse, agent.position);
-          const tangent = normalize({ x: -toMouse.y, y: toMouse.x });
-          agent.applyForce(mult(tangent, 1.4));
+          if (elapsed < D1) {
+            // Phase 1: Smooth glide onto the 360 orbit ring
+            const p = Math.min(elapsed / D1, 1.0);
+            const ease = 1 - Math.pow(1 - p, 3); // Cubic ease out
+
+            const targetRingX = activeMouse.x + baseRadius * Math.cos(agent.orbitSlotAngle);
+            const targetRingY = activeMouse.y + baseRadius * Math.sin(agent.orbitSlotAngle);
+
+            agent.position.x = agent.convergenceStartPos.x + (targetRingX - agent.convergenceStartPos.x) * ease;
+            agent.position.y = agent.convergenceStartPos.y + (targetRingY - agent.convergenceStartPos.y) * ease;
+            agent.element.style.opacity = '1';
+            this.overlayManager.updateAgentTransform(agent.element, agent.position.x, agent.position.y, 0, 1.05);
+          } else if (elapsed < D1 + D2) {
+            // Phase 2: Full 360-degree synchronized circle swirl around user cursor
+            const p = Math.min((elapsed - D1) / D2, 1.0);
+            // Smooth cubic ease-in-out for full 360 rotation
+            const ease = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+            const rotationAngle = 2 * Math.PI * ease; // Exactly 360 degrees (2pi)
+            const currentAngle = agent.orbitSlotAngle + rotationAngle;
+
+            agent.position.x = activeMouse.x + baseRadius * Math.cos(currentAngle);
+            agent.position.y = activeMouse.y + baseRadius * Math.sin(currentAngle);
+            agent.element.style.opacity = '1';
+            this.overlayManager.updateAgentTransform(agent.element, agent.position.x, agent.position.y, 0, 1.05);
+          } else {
+            // Phase 3: Collapse inward and join directly into the main user cursor
+            const p = Math.min((elapsed - (D1 + D2)) / D3, 1.0);
+            const collapseEase = p * p; // Gravitational acceleration into cursor
+            const currentRadius = Math.max(0, baseRadius * (1 - collapseEase));
+            const spiralAngle = agent.orbitSlotAngle + 2 * Math.PI + 0.8 * collapseEase;
+
+            agent.position.x = activeMouse.x + currentRadius * Math.cos(spiralAngle);
+            agent.position.y = activeMouse.y + currentRadius * Math.sin(spiralAngle);
+
+            const scale = Math.max(0.1, 1.05 * (1 - collapseEase * 0.9));
+            const opacity = p > 0.65 ? Math.max(0, (1 - p) / 0.35) : 1;
+            agent.element.style.opacity = opacity.toFixed(3);
+            this.overlayManager.updateAgentTransform(agent.element, agent.position.x, agent.position.y, 0, scale);
+
+            if (p >= 1.0 || currentRadius <= 3) {
+              agent.state = 'VANISHED';
+              agent.element.style.display = 'none';
+              agent.element.style.opacity = '0';
+
+              // Vibrant neon ripples expanding from the main cursor tip as cursors merge
+              if (i % 3 === 0 || i === this.agents.length - 1) {
+                this.overlayManager.createVanishRipple(activeMouse.x, activeMouse.y, agent.color);
+              }
+            }
+          }
         } else if (agent.state === 'IDLE_FLOCKING' || agent.state === 'RETURNING_TO_SWARM') {
           const force = BoidsPhysics.calculateFlockingForces(
             agent,
@@ -277,9 +333,9 @@ export class SwarmEngine implements DomSwarmInstance {
               this.config.onAgentStateChange?.(agent.id, 'IDLE_FLOCKING');
             }
           }
-        }
 
-        agent.update(dt, this.overlayManager);
+          agent.update(dt, this.overlayManager);
+        }
       }
 
       // Update active construction tasks: agents stay locked directly to the box borders
@@ -288,7 +344,38 @@ export class SwarmEngine implements DomSwarmInstance {
         const rect = task.element.getBoundingClientRect();
         task.rect = rect;
 
-        if (task.phase === 'CLONING') {
+        if (task.phase === 'MOVING') {
+          const elapsed = Math.max(0, timestamp - (task.moveStartTime || timestamp));
+          const duration = task.moveDuration || 200;
+          const p = Math.min(elapsed / duration, 1.0);
+          // Smooth cubic ease-in-out: 3p^2 - 2p^3
+          const ease = p * p * (3 - 2 * p);
+
+          const from = task.startPos || { x: rect.left, y: rect.top };
+          const to = task.targetPos || { x: rect.left, y: rect.top };
+          const curX = from.x + (to.x - from.x) * ease;
+          const curY = from.y + (to.y - from.y) * ease;
+
+          const leadAgent = this.agents.find((a) => a.id === task.assignedAgents[0]);
+          if (leadAgent) {
+            leadAgent.position.x = curX;
+            leadAgent.position.y = curY;
+            leadAgent.velocity = vec(0, 0);
+            leadAgent.element.style.opacity = '1';
+            this.overlayManager.updateAgentTransform(
+              leadAgent.element,
+              curX,
+              curY,
+              0,
+              1.05
+            );
+          }
+
+          if (p >= 1.0) {
+            task.phase = task.isCopyPaste ? 'CLONING' : 'EXPANDING';
+            task.expandStartTime = timestamp;
+          }
+        } else if (task.phase === 'CLONING') {
           const elapsed = Math.max(0, timestamp - task.expandStartTime);
           const p = Math.min(elapsed / task.expandDuration, 1.0);
           const ease = 1 - Math.pow(1 - p, 3); // Smooth cubic ease-out
@@ -476,8 +563,20 @@ export class SwarmEngine implements DomSwarmInstance {
   private processBuildQueue(): void {
     if (this.destroyed || this.paused || this.isConverging) return;
 
+    // Clean up detached elements from template history
+    if (this.constructedTemplates.length > 0) {
+      this.constructedTemplates = this.constructedTemplates.filter(
+        (t) => typeof document !== 'undefined' && document.body.contains(t.element)
+      );
+    }
+
+    const effectiveConcurrency = Math.max(
+      this.config.concurrency,
+      Math.ceil(this.config.agentCount / this.config.teamSize)
+    );
+
     // Dispatch next elements up to concurrency limit
-    while (this.tasks.size < this.config.concurrency && this.buildQueue.length > 0) {
+    while (this.tasks.size < effectiveConcurrency && this.buildQueue.length > 0) {
       const nextElement = this.buildQueue.shift();
       if (!nextElement) continue;
 
@@ -543,6 +642,7 @@ export class SwarmEngine implements DomSwarmInstance {
 
     if (rect.width < 5 || rect.height < 5) {
       this.builderEffects.executeReveal(element, false, false, 50, () => {
+        this.constructedElements.add(element);
         this.constructedCount++;
         this.processBuildQueue();
       });
@@ -605,6 +705,25 @@ export class SwarmEngine implements DomSwarmInstance {
       );
     }
 
+    const targetPos =
+      isCopyPaste && sourceRect
+        ? vec(sourceRect.left + sourceRect.width / 2, sourceRect.top + sourceRect.height / 2)
+        : vec(rect.left, rect.top);
+
+    const leadAgent = assigned[0];
+    const fromPos = leadAgent ? vec(leadAgent.position.x, leadAgent.position.y) : targetPos;
+    const moveDist = dist(fromPos, targetPos);
+    // Smooth transition between completed work and new work
+    const shouldSmoothMove = moveDist > 16;
+    const moveDuration = shouldSmoothMove
+      ? Math.min(Math.max(Math.floor(moveDist * 0.35), 160), 320)
+      : 0;
+    const initialPhase: TaskPhase = shouldSmoothMove
+      ? 'MOVING'
+      : isCopyPaste
+      ? 'CLONING'
+      : 'EXPANDING';
+
     const task: ConstructionTask = {
       id: taskId,
       element,
@@ -612,13 +731,17 @@ export class SwarmEngine implements DomSwarmInstance {
       boxType,
       assignedAgents: assigned.map((a) => a.id),
       borderRoles,
-      phase: isCopyPaste ? 'CLONING' : 'EXPANDING',
+      phase: initialPhase,
       isCopyPaste,
       category,
       cursorType: initialTool,
       sourceRect,
       startTime: performance.now(),
-      expandStartTime: performance.now(),
+      moveStartTime: performance.now(),
+      moveDuration,
+      startPos: fromPos,
+      targetPos,
+      expandStartTime: performance.now() + moveDuration,
       expandDuration: isCopyPaste ? 320 : 280,
       duration: this.config.buildDuration,
       isText,
@@ -628,11 +751,12 @@ export class SwarmEngine implements DomSwarmInstance {
     };
 
     // Watchdog failsafe: guarantee task completion and resource release even if element is unmounted or animation stalls
+    const totalWatchdog = moveDuration + (task.expandDuration || 280) + (task.duration || 550) + 1200;
     task.watchdogTimer = setTimeout(() => {
       if (this.tasks.has(taskId)) {
         this.completeTask(taskId);
       }
-    }, (task.duration || 550) + 1200);
+    }, totalWatchdog);
 
     this.tasks.set(taskId, task);
 
@@ -642,24 +766,22 @@ export class SwarmEngine implements DomSwarmInstance {
       this.constructedTemplates.shift();
     }
 
-    const startPos =
-      isCopyPaste && sourceRect
-        ? vec(sourceRect.left + sourceRect.width / 2, sourceRect.top + sourceRect.height / 2)
-        : vec(rect.left, rect.top);
-
     // Dispatch agents: lead agent uses the specialized tool (pen or hand or pointer), others use the primary pointer
     assigned.forEach((agent, idx) => {
       const role = borderRoles[idx % borderRoles.length] || 'top';
       const agentTool: AgentType = idx === 0 ? initialTool : 'pointer';
-      agent.assignTarget(startPos, element, taskId, role, rect, agentTool, this.overlayManager);
+      agent.assignTarget(targetPos, element, taskId, role, rect, agentTool, this.overlayManager);
 
-      // When starting a new shape drag (not copy-paste), only the single lead agent is visible dragging the shape
+      // When starting a new shape drag, keep the lead agent at its current position so it glides smoothly to the target
       if (!isCopyPaste) {
         if (idx === 0) {
-          agent.position.x = rect.left;
-          agent.position.y = rect.top;
           agent.element.style.opacity = '1';
+          if (!shouldSmoothMove) {
+            agent.position.x = targetPos.x;
+            agent.position.y = targetPos.y;
+          }
         } else {
+          // Secondary border cursors remain hidden until phase transitions to BUILDING, where they appear along borders
           agent.element.style.opacity = '0';
           agent.position.x = rect.left + rect.width / 2;
           agent.position.y = rect.top + rect.height / 2;
@@ -711,24 +833,34 @@ export class SwarmEngine implements DomSwarmInstance {
   }
 
   /**
-   * Triggers the grand finale: all 18 cursors accelerate towards the user's cursor, swirl, and vanish.
+   * Triggers the grand finale: all 18 cursors fly to the user's cursor,
+   * perform a synchronized 360° circle swirl around it, and collapse/join
+   * into the main user cursor with vibrant vanish ripples.
    */
   private triggerConvergenceFinale(): void {
     if (this.convergenceTimer) {
       clearTimeout(this.convergenceTimer);
+      this.convergenceTimer = null;
     }
     this.isConverging = true;
+    this.convergenceStartTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
     const targetPos = this.mousePos || vec(
       (window.innerWidth || 1024) / 2,
       (window.innerHeight || 768) / 2
     );
 
-    this.agents.forEach((agent) => {
-      agent.convergeTo(targetPos, this.overlayManager);
+    const total = this.agents.length;
+    this.agents.forEach((agent, idx) => {
+      agent.assignedTaskId = null;
+      agent.targetElement = null;
+      agent.targetRect = null;
+      const orbitAngle = (2 * Math.PI * idx) / (total || 18);
+      agent.convergeTo(targetPos, this.overlayManager, orbitAngle);
       this.config.onAgentStateChange?.(agent.id, 'CONVERGING_TO_USER');
     });
 
+    // Failsafe watchdog timer to guarantee final cleanup even if rAF pauses
     this.convergenceTimer = setTimeout(() => {
       if (this.isConverging) {
         this.agents.forEach((agent) => {
@@ -740,7 +872,7 @@ export class SwarmEngine implements DomSwarmInstance {
         this.convergenceTimer = null;
         this.config.onSwarmVanished?.();
       }
-    }, 2500);
+    }, 3200);
   }
 
   /**
@@ -933,30 +1065,22 @@ export class SwarmEngine implements DomSwarmInstance {
   }
 
   /**
-   * Selects a team of 4 available agents closest to the element.
+   * Selects a team of available agents closest to the element, rotating fairly so all agents work.
    */
   private pickTeamAgents(target: Vector2D, count: number): Agent[] {
     const idleAgents = this.agents.filter(
       (a) => a.state === 'IDLE_FLOCKING' || a.state === 'RETURNING_TO_SWARM'
     );
 
-    // Group by teamId first if a complete team of 4 is idle
-    const teamMap = new Map<number, Agent[]>();
-    idleAgents.forEach((a) => {
-      const list = teamMap.get(a.teamId) || [];
-      list.push(a);
-      teamMap.set(a.teamId, list);
-    });
+    if (idleAgents.length === 0) return [];
 
-    // Check for an intact team of 4
-    for (const [, teamList] of teamMap.entries()) {
-      if (teamList.length >= count) {
-        return teamList.slice(0, count);
-      }
-    }
-
-    // Otherwise, pick the closest available agents
+    // Prioritize agents that have not been assigned recently (fair round-robin rotation)
+    // while also factoring in distance to the target element.
     idleAgents.sort((a, b) => {
+      const timeDiff = a.lastAssignedTime - b.lastAssignedTime;
+      if (Math.abs(timeDiff) > 600) {
+        return timeDiff;
+      }
       const distA = dist(a.position, target);
       const distB = dist(b.position, target);
       return distA - distB;

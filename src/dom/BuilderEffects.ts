@@ -268,7 +268,7 @@ export class BuilderEffects {
   /**
    * Cleans up temporary inline styles applied during animation.
    */
-  private cleanupElement(element: HTMLElement): void {
+  public cleanupElement(element: HTMLElement): void {
     element.style.removeProperty('transition');
     element.style.removeProperty('transform');
     element.style.removeProperty('opacity');

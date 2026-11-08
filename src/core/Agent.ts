@@ -5,7 +5,6 @@ import {
   add,
   mult,
   limit,
-  dist,
   randomRange,
 } from '../utils/math';
 
@@ -32,6 +31,9 @@ export class Agent {
   public assignedTaskId: string | null = null;
   public borderRole: BorderRole | null = null;
   public targetRect: DOMRect | null = null;
+  public lastAssignedTime = 0;
+  public convergenceStartPos: Vector2D = { x: 0, y: 0 };
+  public orbitSlotAngle = 0;
   private borderProgress = 0;
 
   public element: HTMLElement;
@@ -124,23 +126,16 @@ export class Agent {
       this.acceleration = vec(0, 0);
 
       if (this.state === 'CONVERGING_TO_USER') {
-        if (this.targetPosition) {
-          const d = dist(this.position, this.targetPosition);
-          const progress = Math.min(Math.max(d / 70, 0), 1);
-          this.targetScale = progress * 1.05;
-          this.currentOpacity = progress;
-
-          if (d < 14) {
-            this.state = 'VANISHED';
-            this.element.style.opacity = '0';
-            this.element.style.display = 'none';
-            overlayManager.createVanishRipple(this.position.x, this.position.y, this.color);
-            return;
-          }
-
-          // Keep clean upright orientation as agents converge
-          this.headingAngle = 0;
-        }
+        this.headingAngle = 0;
+        this.element.style.opacity = this.currentOpacity.toFixed(3);
+        overlayManager.updateAgentTransform(
+          this.element,
+          this.position.x,
+          this.position.y,
+          0,
+          this.currentScale
+        );
+        return;
       } else {
         // Naturally upright with zero or subtle movement
         this.headingAngle = 0;
@@ -191,6 +186,7 @@ export class Agent {
     this.assignedTaskId = taskId;
     this.borderRole = borderRole;
     this.targetRect = rect;
+    this.lastAssignedTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
     this.state = 'MOVING_TO_TARGET';
 
     this.morphIcon(toolType, overlayManager);
@@ -220,16 +216,24 @@ export class Agent {
   }
 
   /**
-   * Directs the agent to accelerate and converge into the user's cursor, then vanish.
+   * Directs the agent to converge towards the user's cursor, swirl 360°, and join the main cursor.
    */
-  public convergeTo(userPos: Vector2D, overlayManager: OverlayManager): void {
+  public convergeTo(userPos: Vector2D, overlayManager: OverlayManager, orbitAngle = 0): void {
     this.state = 'CONVERGING_TO_USER';
     this.targetPosition = { ...userPos };
+    this.convergenceStartPos = { ...this.position };
+    this.orbitSlotAngle = orbitAngle;
     this.targetElement = null;
     this.assignedTaskId = null;
     this.borderRole = null;
     this.targetRect = null;
     this.morphIcon('pointer', overlayManager);
+    this.element.style.display = 'block';
+    this.element.style.opacity = '1';
+    this.headingAngle = 0;
+    this.targetScale = 1.05;
+    this.currentScale = 1.05;
+    this.currentOpacity = 1;
     this.maxSpeed = 15.0;
   }
 
