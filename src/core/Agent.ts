@@ -50,8 +50,8 @@ export class Agent {
     teamId: number,
     initialPos: Vector2D,
     overlayManager: OverlayManager,
-    maxSpeed = 9.5,
-    maxForce = 0.4
+    maxSpeed = 11.5,
+    maxForce = 0.45
   ) {
     this.id = id;
     this.color = color;
@@ -90,7 +90,7 @@ export class Agent {
     if (this.state === 'CONSTRUCTING_ELEMENT' && this.borderRole && this.targetRect) {
       // Smooth sinusoidal movement along the border without rotation
       const rect = this.targetRect;
-      this.borderProgress = (this.borderProgress + dt * 0.016) % 1.0;
+      this.borderProgress = (this.borderProgress + dt * 0.022) % 1.0;
       const t = (Math.sin(this.borderProgress * Math.PI * 2) + 1) * 0.5;
 
       if (this.borderRole === 'top') {

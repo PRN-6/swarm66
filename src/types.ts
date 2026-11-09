@@ -40,7 +40,7 @@ export type TaskPhase = 'MOVING' | 'CLONING' | 'EXPANDING' | 'BUILDING' | 'DONE'
 export interface SwarmConfig {
   /**
    * Total number of autonomous cursor agents in the swarm.
-   * @default 18
+   * @default 24
    */
   agentCount?: number;
 
@@ -85,7 +85,7 @@ export interface SwarmConfig {
 
   /**
    * Number of elements being constructed simultaneously in parallel by teams.
-   * @default 4
+   * @default 6
    */
   concurrency?: number;
 
@@ -140,19 +140,19 @@ export interface SwarmConfig {
 
   /**
    * Maximum movement velocity of agents in pixels per frame.
-   * @default 9.5
+   * @default 11.5
    */
   maxSpeed?: number;
 
   /**
    * Maximum steering force applied to agents.
-   * @default 0.4
+   * @default 0.45
    */
   maxForce?: number;
 
   /**
    * Duration in milliseconds spent constructing each element before moving to the next.
-   * @default 550
+   * @default 300
    */
   buildDuration?: number;
 
@@ -182,7 +182,7 @@ export interface SwarmConfig {
 
   /**
    * Minimum delay between character reveals during typewriter effect (ms).
-   * @default 16
+   * @default 10
    */
   typewriterSpeed?: number;
 

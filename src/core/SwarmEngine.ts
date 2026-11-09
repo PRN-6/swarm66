@@ -17,7 +17,7 @@ import { DomScanner } from '../dom/DomScanner';
 import { vec, dist, randomRange } from '../utils/math';
 
 const DEFAULT_CONFIG: ResolvedSwarmConfig = {
-  agentCount: 18,
+  agentCount: 24,
   teamSize: 4,
   copyPasteDuplicates: true,
   colors: ['#FF5722', '#00BCD4', '#8BC34A', '#9C27B0', '#FFC107', '#E91E63', '#2196F3'],
@@ -25,7 +25,7 @@ const DEFAULT_CONFIG: ResolvedSwarmConfig = {
     'header, nav, main, section, article, aside, footer, h1, h2, h3, h4, h5, h6, p, span, a, button, input, textarea, select, label, img, svg, canvas, video, pre, code, blockquote, li, table, [class*="card"], [class*="badge"], [class*="box"], [class*="panel"], [class*="item"], [class*="border"], [class*="btn"], [class*="spec"], [class*="pill"], .swarm-item',
   ignoreSelector: '[data-no-swarm], script, style, noscript, dom-swarm-overlay, .swarm-hud',
   hideOnStart: true,
-  concurrency: 4,
+  concurrency: 6,
   buildOrder: 'top-to-bottom',
   vanishAtCursor: true,
   rebuildOnRouteChange: true,
@@ -34,14 +34,14 @@ const DEFAULT_CONFIG: ResolvedSwarmConfig = {
   showGuides: true,
   showDimensions: true,
   followMouse: true,
-  maxSpeed: 9.5,
-  maxForce: 0.4,
-  buildDuration: 550,
+  maxSpeed: 11.5,
+  maxForce: 0.45,
+  buildDuration: 300,
   flockRadius: 85,
   separateDistance: 32,
   mouseAttractRadius: 220,
   mouseAttractForce: 0.45,
-  typewriterSpeed: 16,
+  typewriterSpeed: 10,
   debug: false,
 };
 
@@ -261,9 +261,9 @@ export class SwarmEngine implements DomSwarmInstance {
 
         if (agent.state === 'CONVERGING_TO_USER') {
           const elapsed = Math.max(0, timestamp - (this.convergenceStartTime || timestamp));
-          const D1 = 450;  // Phase 1: Fly from work position to circle orbit ring (450ms)
-          const D2 = 1200; // Phase 2: Full 360-degree circular orbit swirl around user cursor (1200ms)
-          const D3 = 450;  // Phase 3: Inward collapse and join into main user cursor (450ms)
+          const D1 = 360;  // Phase 1: Fly from work position to circle orbit ring (360ms)
+          const D2 = 950;  // Phase 2: Full 360-degree circular orbit swirl around user cursor (950ms)
+          const D3 = 360;  // Phase 3: Inward collapse and join into main user cursor (360ms)
           const baseRadius = 65;
 
           if (elapsed < D1) {
@@ -716,7 +716,7 @@ export class SwarmEngine implements DomSwarmInstance {
     // Smooth transition between completed work and new work
     const shouldSmoothMove = moveDist > 16;
     const moveDuration = shouldSmoothMove
-      ? Math.min(Math.max(Math.floor(moveDist * 0.35), 160), 320)
+      ? Math.min(Math.max(Math.floor(moveDist * 0.28), 120), 240)
       : 0;
     const initialPhase: TaskPhase = shouldSmoothMove
       ? 'MOVING'
@@ -742,7 +742,7 @@ export class SwarmEngine implements DomSwarmInstance {
       startPos: fromPos,
       targetPos,
       expandStartTime: performance.now() + moveDuration,
-      expandDuration: isCopyPaste ? 320 : 280,
+      expandDuration: isCopyPaste ? 230 : 200,
       duration: this.config.buildDuration,
       isText,
       boxElement: boxEl,
@@ -751,7 +751,7 @@ export class SwarmEngine implements DomSwarmInstance {
     };
 
     // Watchdog failsafe: guarantee task completion and resource release even if element is unmounted or animation stalls
-    const totalWatchdog = moveDuration + (task.expandDuration || 280) + (task.duration || 550) + 1200;
+    const totalWatchdog = moveDuration + (task.expandDuration || 200) + (task.duration || 380) + 1000;
     task.watchdogTimer = setTimeout(() => {
       if (this.tasks.has(taskId)) {
         this.completeTask(taskId);
@@ -872,7 +872,7 @@ export class SwarmEngine implements DomSwarmInstance {
         this.convergenceTimer = null;
         this.config.onSwarmVanished?.();
       }
-    }, 3200);
+    }, 2500);
   }
 
   /**

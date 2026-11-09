@@ -53,7 +53,8 @@ function startServer(p) {
     console.log(`   Demo  (SaaS Landing):         http://localhost:${p}/demo/index.html`);
     console.log(`   Demo1 (E-Commerce Store):     http://localhost:${p}/demo1/index.html`);
     console.log(`   Demo2 (Developer Docs):       http://localhost:${p}/demo2/index.html`);
-    console.log(`   Demo3 (Creative Portfolio):   http://localhost:${p}/demo3/index.html\n`);
+    console.log(`   Demo3 (Creative Portfolio):   http://localhost:${p}/demo3/index.html`);
+    console.log(`   Demo5 (Mega Showcase 200+ El):http://localhost:${p}/demo5/index.html\n`);
   });
 }
 
